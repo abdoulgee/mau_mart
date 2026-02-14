@@ -27,9 +27,16 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
+    # Build allowed origins from env
+    frontend_url = app.config.get('FRONTEND_URL', 'http://localhost:5173')
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        frontend_url,
+    ]
     CORS(app, resources={
         r"/api/*": {
-            "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
+            "origins": allowed_origins,
             "supports_credentials": True
         }
     })
