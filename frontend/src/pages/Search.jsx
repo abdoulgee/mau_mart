@@ -90,12 +90,12 @@ export default function Search() {
                     </div>
                 )}
 
-                {loading && <div className="grid grid-cols-2 gap-3 mt-4">{[1, 2, 3, 4].map(i => <ProductCardSkeleton key={i} />)}</div>}
+                {loading && <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mt-4">{[1, 2, 3, 4].map(i => <ProductCardSkeleton key={i} />)}</div>}
 
                 {!loading && searchResults.length > 0 && (
                     <div>
                         <p className="text-sm text-gray-500 mb-4 font-medium">Found {searchResults.length} result{searchResults.length !== 1 ? 's' : ''} for "{searchParams.get('q')}"</p>
-                        <div className="grid grid-cols-2 gap-3">{searchResults.map(product => <ProductCard key={product.id} product={product} />)}</div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{searchResults.map(product => <ProductCard key={product.id} product={product} />)}</div>
                     </div>
                 )}
 

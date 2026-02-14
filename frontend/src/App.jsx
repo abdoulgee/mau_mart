@@ -32,6 +32,7 @@ const Orders = lazy(() => import('./pages/Orders'))
 const Checkout = lazy(() => import('./pages/Checkout'))
 const OrderDetail = lazy(() => import('./pages/OrderDetail'))
 const BecomeSeller = lazy(() => import('./pages/BecomeSeller'))
+const Advertise = lazy(() => import('./pages/Advertise'))
 const NotFound = lazy(() => import('./pages/errors/NotFound'))
 const ServerError = lazy(() => import('./pages/errors/ServerError'))
 const Offline = lazy(() => import('./pages/errors/Offline'))
@@ -42,7 +43,6 @@ const SellerProducts = lazy(() => import('./pages/seller/Products'))
 const ProductForm = lazy(() => import('./pages/seller/ProductForm'))
 const SellerOrders = lazy(() => import('./pages/seller/Orders'))
 const StoreSettings = lazy(() => import('./pages/seller/StoreSettings'))
-const SellerSubscription = lazy(() => import('./pages/seller/Subscription'))
 const SellerFeatured = lazy(() => import('./pages/seller/Featured'))
 const SellerAds = lazy(() => import('./pages/seller/Ads'))
 
@@ -118,6 +118,7 @@ function App() {
                             <Route path="/order/new" element={<Checkout />} />
                             <Route path="/order/:id" element={<OrderDetail />} />
                             <Route path="/become-seller" element={<BecomeSeller />} />
+                            <Route path="/advertise" element={<Advertise />} />
                             <Route path="/my-reviews" element={<MyReviews />} />
                             <Route path="/saved" element={<SavedItems />} />
                             <Route path="/profile/edit" element={<EditProfile />} />
@@ -136,7 +137,6 @@ function App() {
                             <Route path="/seller/products/:id/edit" element={<ProductForm />} />
                             <Route path="/seller/orders" element={<SellerOrders />} />
                             <Route path="/seller/store" element={<StoreSettings />} />
-                            <Route path="/seller/subscription" element={<SellerSubscription />} />
                             <Route path="/seller/featured" element={<SellerFeatured />} />
                             <Route path="/seller/ads" element={<SellerAds />} />
                         </Route>

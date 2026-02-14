@@ -150,7 +150,7 @@ export default function Home() {
                         <h2 className="section-title">Categories</h2>
                         <Link to="/categories" className="section-link">See All</Link>
                     </div>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-3">
                         {categoriesLoading ? (
                             Array.from({ length: 6 }).map((_, i) => (
                                 <div key={i} className="h-24 skeleton rounded-2xl" />
@@ -188,11 +188,11 @@ export default function Home() {
                         <Link to="/products?featured=true" className="section-link">See All</Link>
                     </div>
                     {loading ? (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                             {[1, 2, 3, 4].map(i => <ProductCardSkeleton key={i} />)}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                             {featuredProducts.slice(0, 4).map(product => (
                                 <ProductCard key={product.id} product={product} />
                             ))}
@@ -235,11 +235,11 @@ export default function Home() {
                         <Link to="/products" className="section-link">See All</Link>
                     </div>
                     {loading ? (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                             {[1, 2, 3, 4].map(i => <ProductCardSkeleton key={i} />)}
                         </div>
                     ) : (
-                        <div className="grid grid-cols-2 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
                             {recentProducts.slice(0, 6).map(product => (
                                 <ProductCard key={product.id} product={product} />
                             ))}

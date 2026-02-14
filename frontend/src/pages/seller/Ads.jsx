@@ -1,37 +1,32 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import useUIStore from '../../store/uiStore'
+import useSettingsStore from '../../store/settingsStore'
 import { Skeleton } from '../../components/ui/Skeleton'
 
-const placementLabels = {
-    home_banner: { icon: '🏠', label: 'Home Banner', desc: 'Large banner on home page' },
-    category_sidebar: { icon: '📂', label: 'Category Sidebar', desc: 'Sidebar in category pages' },
-    product_interstitial: { icon: '📦', label: 'Product Page', desc: 'Between product listings' }
+const statusColors = {
+    pending: 'bg-primary-100 text-primary-800',
+    approved: 'bg-emerald-100 text-emerald-800',
+    rejected: 'bg-red-100 text-red-800',
+    expired: 'bg-surface-200 text-gray-600'
 }
 
-const statusColors = {
-    pending: 'bg-yellow-100 text-yellow-800',
-    approved: 'bg-green-100 text-green-800',
-    rejected: 'bg-red-100 text-red-800',
-    expired: 'bg-gray-100 text-gray-600'
+const placementLabels = {
+    home_banner: 'Home Banner',
+    search_results: 'Search Results',
+    bottom_cta: 'Bottom CTA'
 }
 
 export default function SellerAds() {
-    const [placements, setPlacements] = useState({})
     const [requests, setRequests] = useState([])
     const [loading, setLoading] = useState(true)
-    const [showForm, setShowForm] = useState(false)
-    const [submitting, setSubmitting] = useState(false)
-    const [form, setForm] = useState({
-        placement: 'home_banner',
-        image_url: '',
-        link_url: '',
-        payment_reference: ''
-    })
-    const [imageFile, setImageFile] = useState(null)
-    const [uploading, setUploading] = useState(false)
+    const [selectedPlacement, setSelectedPlacement] = useState('home_banner')
     const { addToast } = useUIStore()
+    const { settings } = useSettingsStore()
+
+    // Get monetization settings from admin
+    const adPrice = settings?.ad_price_per_24h || 2000
+    const adminWhatsapp = settings?.admin_whatsapp || '+2349000000000'
 
     useEffect(() => {
         fetchData()
@@ -39,300 +34,189 @@ export default function SellerAds() {
 
     const fetchData = async () => {
         try {
-            const [placementsRes, requestsRes] = await Promise.all([
-                api.get('/api/v1/subscriptions/ads/placements'),
-                api.get('/api/v1/subscriptions/ads/my-requests')
-            ])
-            setPlacements(placementsRes.data.placements)
-            setRequests(requestsRes.data.requests || [])
+            const res = await api.get('/api/v1/subscriptions/ads/my-requests')
+            setRequests(res.data.requests || [])
         } catch (error) {
-            addToast({ type: 'error', message: 'Failed to load data' })
+            // Endpoint may not exist yet or no requests — show empty state
+            console.error('Ads page load error:', error)
+            setRequests([])
         } finally {
             setLoading(false)
         }
     }
 
-    const handleImageUpload = async (e) => {
-        const file = e.target.files?.[0]
-        if (!file) return
+    const handleWhatsAppRequest = () => {
+        const placementName = placementLabels[selectedPlacement] || selectedPlacement
 
-        if (file.size > 2 * 1024 * 1024) {
-            addToast({ type: 'error', message: 'Image must be less than 2MB' })
-            return
-        }
+        const message = encodeURIComponent(
+            `Hi, I'd like to request an *Ad Placement* on MAU MART.\n\n` +
+            `📍 Placement: ${placementName}\n` +
+            `💰 Rate: ₦${adPrice.toLocaleString()}/24hrs\n\n` +
+            `Please advise on payment details and banner requirements. Thank you!`
+        )
 
-        setUploading(true)
-        try {
-            const formData = new FormData()
-            formData.append('file', file)
-
-            const res = await api.post('/api/v1/uploads/image', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            })
-
-            setForm({ ...form, image_url: res.data.url })
-            setImageFile(URL.createObjectURL(file))
-            addToast({ type: 'success', message: 'Image uploaded' })
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to upload image' })
-        } finally {
-            setUploading(false)
-        }
-    }
-
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-        if (!form.image_url || !form.payment_reference) {
-            addToast({ type: 'error', message: 'Please upload an image and enter payment reference' })
-            return
-        }
-
-        setSubmitting(true)
-        try {
-            await api.post('/api/v1/subscriptions/ads/request', form)
-            addToast({ type: 'success', message: 'Ad request submitted!' })
-            setShowForm(false)
-            setForm({ placement: 'home_banner', image_url: '', link_url: '', payment_reference: '' })
-            setImageFile(null)
-            fetchData()
-        } catch (error) {
-            addToast({ type: 'error', message: error.response?.data?.message || 'Request failed' })
-        } finally {
-            setSubmitting(false)
-        }
+        const whatsappUrl = `https://wa.me/${adminWhatsapp.replace(/[^0-9]/g, '')}?text=${message}`
+        window.open(whatsappUrl, '_blank')
     }
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-surface-50 p-4">
+            <div className="space-y-4">
                 <Skeleton className="h-8 w-48 mb-6" />
-                <div className="space-y-4">
-                    {[1, 2, 3].map(i => <Skeleton key={i} className="h-32 rounded-2xl" />)}
-                </div>
+                <Skeleton className="h-48 rounded-2xl" />
+                <Skeleton className="h-32 rounded-2xl" />
             </div>
         )
     }
 
-    const selectedPlacement = placements[form.placement]
-
     return (
-        <div className="min-h-screen bg-surface-50 pb-20">
-            {/* Header */}
-            <div className="sticky top-0 bg-white border-b border-gray-100 px-4 py-3 flex items-center justify-between z-10">
-                <div className="flex items-center gap-3">
-                    <Link to="/seller/subscription" className="p-2 -ml-2 text-gray-600">
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                    </Link>
-                    <h1 className="text-lg font-semibold">Ad Placements</h1>
+        <div className="space-y-6 pb-24 md:pb-6">
+            {/* Hero Card */}
+            <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl p-6 text-white shadow-lg">
+                <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 bg-white/10 rounded-xl flex items-center justify-center backdrop-blur-sm">
+                        <svg className="w-6 h-6 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
+                    </div>
+                    <div>
+                        <h1 className="text-lg font-bold">Ad Placements</h1>
+                        <p className="text-white/60 text-sm">Advertise on the platform</p>
+                    </div>
                 </div>
+                <div className="flex items-baseline gap-1 mt-2">
+                    <span className="text-3xl font-extrabold text-primary-400">₦{adPrice.toLocaleString()}</span>
+                    <span className="text-white/50 text-sm">/ 24 hours</span>
+                </div>
+                <p className="text-white/50 text-xs mt-1">Banner ads across the platform</p>
+            </div>
+
+            {/* Request Section */}
+            <div className="card space-y-4">
+                <h2 className="font-bold text-gray-900 flex items-center gap-2">
+                    <svg className="w-5 h-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                    Request Ad Placement
+                </h2>
+
+                {/* Select Placement */}
+                <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Placement Type
+                    </label>
+                    <div className="space-y-2">
+                        {Object.entries(placementLabels).map(([key, label]) => (
+                            <label
+                                key={key}
+                                className={`flex items-center gap-3 p-3 rounded-2xl border-2 cursor-pointer transition-all ${selectedPlacement === key
+                                    ? 'border-primary-500 bg-primary-50'
+                                    : 'border-surface-200 hover:border-surface-300'
+                                    }`}
+                            >
+                                <input
+                                    type="radio"
+                                    name="placement"
+                                    value={key}
+                                    checked={selectedPlacement === key}
+                                    onChange={e => setSelectedPlacement(e.target.value)}
+                                    className="hidden"
+                                />
+                                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${selectedPlacement === key ? 'bg-primary-100' : 'bg-surface-100'}`}>
+                                    <svg className={`w-5 h-5 ${selectedPlacement === key ? 'text-primary-600' : 'text-gray-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d={
+                                            key === 'home_banner' ? 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6' :
+                                                key === 'search_results' ? 'M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' :
+                                                    'M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5'
+                                        } />
+                                    </svg>
+                                </div>
+                                <div className="flex-1">
+                                    <p className="font-semibold text-sm text-gray-900">{label}</p>
+                                    <p className="text-xs text-gray-400">
+                                        {key === 'home_banner' ? 'Large banner on home page' :
+                                            key === 'search_results' ? 'Appears in search results' :
+                                                'Sticky banner at the bottom'}
+                                    </p>
+                                </div>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+
+                {/* How it works */}
+                <div className="p-4 bg-surface-50 rounded-2xl space-y-3">
+                    <p className="text-sm font-semibold text-gray-700">How it works:</p>
+                    <div className="flex items-start gap-3">
+                        <span className="w-6 h-6 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">1</span>
+                        <p className="text-sm text-gray-600">Choose your ad placement type above</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <span className="w-6 h-6 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">2</span>
+                        <p className="text-sm text-gray-600">Click "Send Request" — opens WhatsApp with the admin</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <span className="w-6 h-6 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">3</span>
+                        <p className="text-sm text-gray-600">Send your banner image & make payment via transfer</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                        <span className="w-6 h-6 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0">✓</span>
+                        <p className="text-sm text-gray-600">Admin activates your ad placement</p>
+                    </div>
+                </div>
+
+                {/* Send Request Button */}
                 <button
-                    onClick={() => setShowForm(true)}
-                    className="btn-primary text-sm py-2 px-4"
+                    onClick={handleWhatsAppRequest}
+                    className="w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-white bg-[#25D366] hover:bg-[#1fb855] transition-colors shadow-md"
                 >
-                    + New Ad
+                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" /></svg>
+                    Send Request via WhatsApp
                 </button>
             </div>
 
-            {/* Pricing Cards */}
-            <div className="p-4">
-                <h2 className="text-sm font-medium text-gray-500 mb-3">AD PLACEMENTS</h2>
-                <div className="grid grid-cols-3 gap-3">
-                    {Object.entries(placements).map(([key, placement]) => (
-                        <div
-                            key={key}
-                            className="p-3 bg-white rounded-xl border border-gray-100 text-center"
-                        >
-                            <span className="text-2xl">{placementLabels[key]?.icon}</span>
-                            <p className="text-xs text-gray-500 mt-1">{placementLabels[key]?.label}</p>
-                            <p className="text-sm font-bold text-primary-600">₦{placement.price.toLocaleString()}</p>
-                            <p className="text-xs text-gray-400">{placement.duration_days} days</p>
-                        </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* My Requests */}
-            <div className="px-4">
-                <h2 className="text-sm font-medium text-gray-500 mb-3">MY AD REQUESTS</h2>
+            {/* My Ad Requests */}
+            <div>
+                <h2 className="text-sm font-bold text-gray-500 mb-3 uppercase tracking-wider">My Ad Requests</h2>
 
                 {requests.length === 0 ? (
-                    <div className="text-center py-12 text-gray-500">
-                        <span className="text-4xl block mb-4">📢</span>
-                        <p>No ad requests yet</p>
-                        <p className="text-sm">Advertise your store on the platform</p>
+                    <div className="card text-center py-10">
+                        <div className="w-16 h-16 mx-auto mb-3 bg-surface-100 rounded-2xl flex items-center justify-center">
+                            <svg className="w-8 h-8 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z" /></svg>
+                        </div>
+                        <p className="text-gray-500 text-sm">No ad requests yet</p>
+                        <p className="text-gray-400 text-xs mt-1">Advertise your store on the platform</p>
                     </div>
                 ) : (
                     <div className="space-y-3">
                         {requests.map(request => (
-                            <div key={request.id} className="p-4 bg-white rounded-2xl border border-gray-100">
+                            <div key={request.id} className="card">
                                 <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xl">{placementLabels[request.placement]?.icon}</span>
-                                        <span className="text-sm font-medium">
-                                            {placementLabels[request.placement]?.label}
-                                        </span>
-                                    </div>
-                                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusColors[request.status]}`}>
+                                    <span className="text-sm font-semibold text-gray-900">
+                                        {placementLabels[request.placement] || request.placement}
+                                    </span>
+                                    <span className={`px-2.5 py-1 text-xs font-bold rounded-full ${statusColors[request.status]}`}>
                                         {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
                                     </span>
                                 </div>
 
-                                <div className="relative rounded-xl overflow-hidden bg-gray-100">
-                                    <img
-                                        src={request.image_url}
-                                        alt="Ad"
-                                        className="w-full h-24 object-cover"
-                                    />
-                                </div>
-
-                                <div className="flex justify-between mt-3 text-xs text-gray-500">
-                                    <span>₦{request.amount_paid?.toLocaleString()}</span>
-                                    <span>{new Date(request.created_at).toLocaleDateString()}</span>
-                                </div>
-
-                                {request.status === 'approved' && request.expires_at && (
-                                    <p className="text-xs text-green-600 mt-2">
-                                        Expires: {new Date(request.expires_at).toLocaleDateString()}
-                                    </p>
+                                {request.image_url && (
+                                    <div className="relative rounded-xl overflow-hidden bg-surface-100">
+                                        <img
+                                            src={request.image_url}
+                                            alt="Ad"
+                                            className="w-full h-24 object-cover"
+                                        />
+                                    </div>
                                 )}
+
+                                <div className="flex justify-between mt-3 text-xs text-gray-400">
+                                    <span>{new Date(request.created_at).toLocaleDateString()}</span>
+                                    {request.status === 'approved' && request.expires_at && (
+                                        <span className="text-emerald-600 font-medium">Expires: {new Date(request.expires_at).toLocaleDateString()}</span>
+                                    )}
+                                </div>
                             </div>
                         ))}
                     </div>
                 )}
             </div>
-
-            {/* New Request Modal */}
-            {showForm && (
-                <div className="fixed inset-0 bg-black/50 flex items-end z-50" onClick={() => setShowForm(false)}>
-                    <div
-                        className="w-full bg-white rounded-t-3xl p-6 max-h-[85vh] overflow-auto"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-lg font-semibold">Request Ad Placement</h2>
-                            <button onClick={() => setShowForm(false)} className="p-2 text-gray-400">✕</button>
-                        </div>
-
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Placement Type
-                                </label>
-                                <div className="space-y-2">
-                                    {Object.entries(placementLabels).map(([key, info]) => (
-                                        <label
-                                            key={key}
-                                            className={`flex items-center gap-3 p-3 rounded-xl border-2 cursor-pointer ${form.placement === key ? 'border-primary-500 bg-primary-50' : 'border-gray-100'
-                                                }`}
-                                        >
-                                            <input
-                                                type="radio"
-                                                name="placement"
-                                                value={key}
-                                                checked={form.placement === key}
-                                                onChange={e => setForm({ ...form, placement: e.target.value })}
-                                                className="hidden"
-                                            />
-                                            <span className="text-2xl">{info.icon}</span>
-                                            <div className="flex-1">
-                                                <p className="font-medium">{info.label}</p>
-                                                <p className="text-sm text-gray-500">{info.desc}</p>
-                                            </div>
-                                            <span className="font-bold text-primary-600">
-                                                ₦{placements[key]?.price?.toLocaleString()}
-                                            </span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Banner Image
-                                </label>
-                                <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 text-center">
-                                    {imageFile ? (
-                                        <div className="relative">
-                                            <img src={imageFile} alt="Preview" className="w-full h-32 object-cover rounded-lg" />
-                                            <button
-                                                type="button"
-                                                onClick={() => { setImageFile(null); setForm({ ...form, image_url: '' }) }}
-                                                className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full text-xs"
-                                            >
-                                                ✕
-                                            </button>
-                                        </div>
-                                    ) : (
-                                        <label className="cursor-pointer">
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                onChange={handleImageUpload}
-                                                className="hidden"
-                                            />
-                                            <div className="py-4">
-                                                {uploading ? (
-                                                    <span className="text-gray-500">Uploading...</span>
-                                                ) : (
-                                                    <>
-                                                        <span className="text-3xl block mb-2">📷</span>
-                                                        <span className="text-sm text-primary-600">Click to upload banner</span>
-                                                        <p className="text-xs text-gray-400 mt-1">Recommended: 1200x300px</p>
-                                                    </>
-                                                )}
-                                            </div>
-                                        </label>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Link URL (optional)
-                                </label>
-                                <input
-                                    type="url"
-                                    value={form.link_url}
-                                    onChange={e => setForm({ ...form, link_url: e.target.value })}
-                                    placeholder="https://example.com"
-                                    className="input"
-                                />
-                            </div>
-
-                            <div className="p-4 bg-yellow-50 rounded-xl">
-                                <p className="text-sm text-yellow-800">
-                                    <strong>Payment Required:</strong> Transfer ₦{selectedPlacement?.price?.toLocaleString()} to:
-                                </p>
-                                <p className="text-sm font-medium mt-2">Bank: GTBank<br />Account: 0123456789<br />Name: MAU MART</p>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Payment Reference
-                                </label>
-                                <input
-                                    type="text"
-                                    value={form.payment_reference}
-                                    onChange={e => setForm({ ...form, payment_reference: e.target.value })}
-                                    placeholder="Enter transaction reference"
-                                    className="input"
-                                    required
-                                />
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={submitting || !form.image_url}
-                                className="btn-primary w-full disabled:opacity-50"
-                            >
-                                {submitting ? 'Submitting...' : 'Submit Ad Request'}
-                            </button>
-                        </form>
-                    </div>
-                </div>
-            )}
         </div>
     )
 }

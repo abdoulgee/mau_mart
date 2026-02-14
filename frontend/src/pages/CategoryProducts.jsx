@@ -110,9 +110,9 @@ export default function CategoryProducts() {
             <div className="p-4">
                 <AdBanner position="category_banner" />
                 {loading ? (
-                    <div className="grid grid-cols-2 gap-3">{[1, 2, 3, 4, 5, 6].map(i => <ProductCardSkeleton key={i} />)}</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{[1, 2, 3, 4, 5, 6].map(i => <ProductCardSkeleton key={i} />)}</div>
                 ) : products.length > 0 ? (
-                    <div className="grid grid-cols-2 gap-3">{products.map(product => <ProductCard key={product.id} product={product} />)}</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">{products.map(product => <ProductCard key={product.id} product={product} />)}</div>
                 ) : (
                     <div className="text-center py-16">
                         <div className="w-20 h-20 mx-auto mb-4 bg-surface-100 rounded-2xl flex items-center justify-center">

@@ -103,8 +103,8 @@ export default function BottomNav() {
     }
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 glass border-t border-surface-200/60 safe-bottom z-40 shadow-nav">
-            <div className="max-w-2xl mx-auto">
+        <nav className="fixed bottom-0 left-0 right-0 glass border-t border-surface-200/60 safe-bottom z-40 shadow-nav md:hidden">
+            <div className="max-w-2xl lg:max-w-5xl mx-auto">
                 <div className="flex items-center justify-around px-2 py-1.5">
                     {getNavItems().map((item) => (
                         <NavLink

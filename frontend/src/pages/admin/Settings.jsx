@@ -20,6 +20,9 @@ export default function AdminSettings() {
         maintenance_mode: false,
         terms_url: '',
         privacy_url: '',
+        featured_price_per_24h: 500,
+        ad_price_per_24h: 2000,
+        admin_whatsapp: '',
     })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -169,6 +172,36 @@ export default function AdminSettings() {
                                 <p className="text-xs text-yellow-600">All non-admin API requests will return 503. Users will see a maintenance page.</p>
                             </div>
                         </label>
+                    </div>
+                </div>
+
+                {/* Monetization */}
+                <div className="card border-2 border-primary-200 bg-primary-50/30">
+                    <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2">
+                        <svg className="w-5 h-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Monetization
+                    </h3>
+                    <p className="text-xs text-gray-500 mb-4">Prices shown to sellers on Featured & Ads pages. Sellers contact you via WhatsApp to request.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Featured Listing (per 24hrs)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₦</span>
+                                <input type="number" name="featured_price_per_24h" value={settings.featured_price_per_24h} onChange={handleChange} className="input pl-7" min="0" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Ad Placement (per 24hrs)</label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₦</span>
+                                <input type="number" name="ad_price_per_24h" value={settings.ad_price_per_24h} onChange={handleChange} className="input pl-7" min="0" />
+                            </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Admin WhatsApp</label>
+                            <input type="tel" name="admin_whatsapp" value={settings.admin_whatsapp} onChange={handleChange} className="input" placeholder="+234..." />
+                            <p className="text-xs text-gray-400 mt-1">Sellers will be redirected here to request</p>
+                        </div>
                     </div>
                 </div>
 

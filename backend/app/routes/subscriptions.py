@@ -1,6 +1,6 @@
 """
-Subscription and Premium Features Routes
-Handles seller subscriptions, featured listings, and ad placements
+Monetization Routes
+Handles featured listings and ad placements (WhatsApp-based payment flow)
 """
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -10,162 +10,6 @@ from app.models import db, User, Store, Subscription, FeaturedListing, AdRequest
 subscriptions_bp = Blueprint('subscriptions', __name__)
 
 
-# ============== SUBSCRIPTION PLANS ==============
-
-SUBSCRIPTION_PLANS = {
-    'basic': {
-        'name': 'Basic',
-        'price': 0,
-        'duration_days': 0,  # Free forever
-        'max_products': 10,
-        'featured_slots': 0,
-        'priority_support': False,
-        'analytics': False,
-        'verified_badge': False
-    },
-    'starter': {
-        'name': 'Starter',
-        'price': 2000,  # NGN
-        'duration_days': 30,
-        'max_products': 30,
-        'featured_slots': 1,
-        'priority_support': False,
-        'analytics': True,
-        'verified_badge': False
-    },
-    'professional': {
-        'name': 'Professional',
-        'price': 5000,
-        'duration_days': 30,
-        'max_products': 100,
-        'featured_slots': 3,
-        'priority_support': True,
-        'analytics': True,
-        'verified_badge': True
-    },
-    'enterprise': {
-        'name': 'Enterprise',
-        'price': 10000,
-        'duration_days': 30,
-        'max_products': -1,  # Unlimited
-        'featured_slots': 10,
-        'priority_support': True,
-        'analytics': True,
-        'verified_badge': True
-    }
-}
-
-
-@subscriptions_bp.route('/plans', methods=['GET'])
-def get_plans():
-    """Get all available subscription plans"""
-    return jsonify({'plans': SUBSCRIPTION_PLANS}), 200
-
-
-@subscriptions_bp.route('/my-subscription', methods=['GET'])
-@jwt_required()
-def get_my_subscription():
-    """Get current user's subscription status"""
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    
-    if not user or not user.store:
-        return jsonify({'message': 'Store not found'}), 404
-    
-    subscription = Subscription.query.filter_by(
-        store_id=user.store.id,
-        is_active=True
-    ).first()
-    
-    if not subscription:
-        return jsonify({
-            'subscription': None,
-            'plan': SUBSCRIPTION_PLANS['basic'],
-            'plan_key': 'basic'
-        }), 200
-    
-    return jsonify({
-        'subscription': subscription.to_dict(),
-        'plan': SUBSCRIPTION_PLANS.get(subscription.plan, SUBSCRIPTION_PLANS['basic']),
-        'plan_key': subscription.plan
-    }), 200
-
-
-@subscriptions_bp.route('/subscribe', methods=['POST'])
-@jwt_required()
-def subscribe():
-    """Subscribe to a plan"""
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    
-    if not user or not user.store:
-        return jsonify({'message': 'You must have a store to subscribe'}), 400
-    
-    data = request.get_json()
-    plan_key = data.get('plan')
-    payment_reference = data.get('payment_reference')
-    
-    if plan_key not in SUBSCRIPTION_PLANS:
-        return jsonify({'message': 'Invalid plan'}), 400
-    
-    plan = SUBSCRIPTION_PLANS[plan_key]
-    
-    if plan['price'] > 0 and not payment_reference:
-        return jsonify({'message': 'Payment reference required for paid plans'}), 400
-    
-    # Deactivate existing subscriptions
-    Subscription.query.filter_by(store_id=user.store.id, is_active=True).update({
-        'is_active': False
-    })
-    
-    # Create new subscription
-    subscription = Subscription(
-        store_id=user.store.id,
-        plan=plan_key,
-        amount_paid=plan['price'],
-        payment_reference=payment_reference,
-        starts_at=datetime.utcnow(),
-        expires_at=datetime.utcnow() + timedelta(days=plan['duration_days']) if plan['duration_days'] > 0 else None,
-        is_active=True
-    )
-    
-    db.session.add(subscription)
-    
-    # Update store verification if plan includes badge
-    if plan['verified_badge']:
-        user.store.is_verified = True
-    
-    db.session.commit()
-    
-    return jsonify({
-        'message': f'Successfully subscribed to {plan["name"]} plan',
-        'subscription': subscription.to_dict()
-    }), 201
-
-
-@subscriptions_bp.route('/cancel', methods=['POST'])
-@jwt_required()
-def cancel_subscription():
-    """Cancel current subscription"""
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    
-    if not user or not user.store:
-        return jsonify({'message': 'Store not found'}), 404
-    
-    subscription = Subscription.query.filter_by(
-        store_id=user.store.id,
-        is_active=True
-    ).first()
-    
-    if not subscription:
-        return jsonify({'message': 'No active subscription found'}), 404
-    
-    subscription.is_active = False
-    subscription.cancelled_at = datetime.utcnow()
-    db.session.commit()
-    
-    return jsonify({'message': 'Subscription cancelled'}), 200
 
 
 # ============== FEATURED LISTINGS ==============
@@ -249,8 +93,8 @@ def get_my_featured():
 
 AD_PLACEMENTS = {
     'home_banner': {'price': 2000, 'duration_days': 7, 'label': 'Home Page Banner'},
-    'category_sidebar': {'price': 1000, 'duration_days': 7, 'label': 'Category Sidebar'},
-    'product_interstitial': {'price': 500, 'duration_days': 3, 'label': 'Product Page Ad'},
+    'search_results': {'price': 1000, 'duration_days': 7, 'label': 'Search Results'},
+    'bottom_cta': {'price': 500, 'duration_days': 3, 'label': 'Bottom CTA'},
 }
 
 
@@ -324,22 +168,6 @@ def get_my_ad_requests():
 
 
 # ============== ADMIN ENDPOINTS ==============
-
-@subscriptions_bp.route('/admin/subscriptions', methods=['GET'])
-@jwt_required()
-def admin_get_subscriptions():
-    """Get all subscriptions (admin only)"""
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    
-    if not user or user.role not in ['admin', 'super_admin']:
-        return jsonify({'message': 'Unauthorized'}), 403
-    
-    subscriptions = Subscription.query.order_by(Subscription.created_at.desc()).limit(100).all()
-    
-    return jsonify({
-        'subscriptions': [s.to_dict() for s in subscriptions]
-    }), 200
 
 
 @subscriptions_bp.route('/admin/featured', methods=['GET'])

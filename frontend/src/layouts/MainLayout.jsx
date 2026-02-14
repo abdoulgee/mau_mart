@@ -1,5 +1,6 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom'
 import BottomNav from '../components/navigation/BottomNav'
+import PWAInstallPrompt from '../components/ui/PWAInstallPrompt'
 import useUIStore from '../store/uiStore'
 import { useEffect } from 'react'
 import useChatStore from '../store/chatStore'
@@ -59,13 +60,18 @@ export default function MainLayout() {
                 </div>
             )}
 
-            {/* Main content area */}
-            <main className="pb-20 max-w-2xl mx-auto">
+            {/* Main content area — responsive: mobile full width, tablet/desktop centered and wider */}
+            <main className="pb-20 md:pb-6 max-w-2xl md:max-w-5xl xl:max-w-6xl mx-auto transition-all">
                 <Outlet />
             </main>
 
-            {/* Bottom navigation */}
-            <BottomNav />
+            {/* Bottom navigation — visible only on mobile */}
+            <div className="md:hidden">
+                <BottomNav />
+            </div>
+
+            {/* PWA Install Prompt */}
+            <PWAInstallPrompt />
         </div>
     )
 }
