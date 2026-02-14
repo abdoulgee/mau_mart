@@ -1,0 +1,381 @@
+FULL PRODUCTION AI BUILD PROMPT FOR MAU MART
+
+You are a principal full-stack engineer, senior software developer, professional frontend developer, and professional backend engineer AI tasked with building a FULL-SCALE, PRODUCTION-READY Progressive Web Application (PWA) called **MAU MART**.
+
+⚠️ IMPORTANT: This is NOT an MVP, demo, prototype, or sample. EVERY feature listed must be fully implemented, fully functional, thoroughly tested, connected end-to-end, and ready for production.
+
+TECH STACK (DO NOT CHANGE)
+-----------------------------------
+Frontend:
+- React using Vite
+- Tailwind CSS
+- React Router v6
+- Zustand or Context for state management
+- PWA with manifest, service worker, offline cache, install prompt
+- Fully mobile-first design
+
+Backend:
+- Python Flask
+- Flask-JWT-Extended for authentication
+- Flask-SocketIO for real-time chat
+- PostgreSQL for database
+- SMTP email support with multiple configs
+- REST APIs with proper versioning and documentation
+
+---
+
+UI/UX DESIGN
+-----------------------------------
+• Follow modern **e-commerce mobile app UI** best practices and design patterns (clear hierarchy, responsive layout, vertical single-column scroll, thumb-friendly interactions) consistent with top mobile designs seen in Figma and modern apps. :contentReference[oaicite:0]{index=0}  
+• Clean, minimal, premium feel: white backgrounds, soft shadows, rounded cards, smooth transitions, skeleton loaders during data loading, toast notifications for feedback.  
+• Bottom navigation bar is required (Home, Categories, Sell, Chat, Profile).  
+• Sticky headers, back button on detail pages, graceful error/fallback screens, offline UI support.  
+• All interactive elements must have responsive states (hover/focus/pressed for buttons).  
+• Accessibility: readable fonts, sufficient contrast, and large touch-targets recommended for mobile users. :contentReference[oaicite:1]{index=1}
+
+---
+
+AUTHENTICATION
+-----------------------------------
+Signup:
+• first name, last name, phone number, email, student ID (optional), password  
+• Send OTP to email for verification.  
+• Print OTP to the backend terminal/console when sending email (for environments before SMTP is configured).  
+• Block login until email is verified.
+
+Login:
+• Login with email OR student ID + password  
+• JWT authentication and refresh tokens supported.
+
+Password Reset:
+• Email OTP sent
+• Verify OTP
+• Allow password change
+
+---
+
+MOBILE BOTTOM NAVIGATION
+-----------------------------------
+• Always visible at bottom with icons and labels  
+• Home, Categories, Sell or (Orders)[base on store owner or normal buyer], Chat, Profile  
+• Highlight active state
+
+---
+
+GLOBAL ERROR AND FALLBACK PAGES
+-----------------------------------
+• 404 Not Found page  
+• 500 Internal Server Error page  
+• No Internet / Offline page  
+• Loading skeleton screens for all data fetch views
+
+---
+
+HOME PAGE
+-----------------------------------
+Sections (in exact order):
+1. Ads Banner Carousel (auto-slide, clickable, admin controlled)  
+2. Search Bar (Products & Stores)  
+3. Category Grid  
+4. Featured Products (admin selected & monetized)  
+5. Recently Added Products  
+6. Top Rated Stores
+
+All sections must be responsive and loaded from backend APIs.
+
+---
+
+CATEGORY SYSTEM
+-----------------------------------
+• Admin manages categories  
+• Each category has a title, icon, optional banner  
+• Category pages show product lists with filters
+
+---
+
+PRODUCT SYSTEM
+-----------------------------------
+• Product types supported: physical items, accommodation/rooms, food/kitchen, services  
+• Store media in optimized uploads
+• Max 4 total media (images + video) per product
+• Media displayed in a carousel with smooth transitions
+
+---
+
+PRODUCT PAGE
+-----------------------------------
+Displays:
+• Media carousel  
+• Product title & description  
+• Price & stock status  
+• Pickup location  
+• Seller preview (name, rating, badge)  
+• Share button (copy link)  
+• Chat button  
+• Buy button  
+• Ratings & reviews  
+• Report product
+
+Manual Payment Flow:
+1. Buyer clicks Buy  
+2. Display seller bank account details  
+3. Buyer transfers manually  
+4. Buyer clicks “I have paid”  
+5. System auto-sends a chat message to seller  
+6. Seller approves/rejects  
+7. On approval:  
+   • Order marked successful  
+   • Generate receipt PDF  
+   • Email receipt to buyer and seller
+
+---
+
+FOOD VENDORS (KITCHEN) SPECIAL FLOWS
+-----------------------------------
+• Menu style UI  
+• Category listing (breakfast, lunch, snacks, drinks)  
+• Prep time indicator  
+• Open/closed status  
+• Search items within vendor
+
+---
+
+STORE PROFILE PAGE
+-----------------------------------
+Public view:
+• Store name, logo, bio/about, address  
+• Verified badge (blue tick)  
+• Ratings & reviews  
+• Products grid  
+• Total products, total orders  
+• Chat button
+
+---
+
+STORE / SELLER REQUEST FORM
+-----------------------------------
+Standalone page where a user can apply for a store:
+• Personal info (name, phone, email)
+• Store/business info
+• Business address
+• ID upload or proof
+• Submit request → backend status = pending_review
+
+Admin Panel full control:
+• List store requests
+• View full details
+• Field to add admin notes
+• Approve or reject after manual verification (call or physical check)
+• On approval, user becomes seller
+* Analytics dashboard
+### Admin Dashboard
+- Total users
+- Total sellers
+- Total stores
+- Products count
+- Ads running
+- Reports
+
+### User Management
+- View users
+- Suspend / ban
+- Role management
+
+### Store Management
+- View store requests
+- Approve / reject
+- Assign verified badge
+- Disable / enable stores
+- Feature stores
+
+### Product Management
+- View all products
+- Remove / suspend
+- Feature products
+
+### Ads & Monetization
+- Banner ads
+- Featured listings
+- Pricing control
+- Ad duration control
+
+### Moderation
+- Reports
+- Chats
+- Abuse handling
+
+### System Settings
+- Categories
+- App settings
+- Static pages
+
+
+* Email campaigns
+* Push notifications
+* SMTP configs + test email
+
+## 👨‍💻 SUPPORT ADMIN SYSTEM
+
+* Create support admins
+* Permission matrix
+* Full permission = super admin
+
+---
+
+VERIFIED STORE BADGE (MONETIZATION)
+-----------------------------------
+• Stores can request verification badge  
+• Admin manually approves after payment confirmation  
+• Verified stores get a blue tick badge and trust indicator on store and product pages
+
+---
+
+SELLER DASHBOARD
+-----------------------------------
+• Analytics (orders count, products count, ratings)  
+• Product management (add, edit, delete)  
+• Store profile edit  
+• Bank transfer details edit  
+• Subscription status  
+• Featured requests & Ads requests history
+
+---
+
+CHAT SYSTEM
+-----------------------------------
+• Buyer ↔ Seller  
+• Seller ↔ Admin  
+• Real-time messaging (SocketIO)  
+• Support text, images, videos  
+• Product and order linked messages  
+• Read receipts & timestamp
+
+---
+
+ORDER SYSTEM
+-----------------------------------
+Order statuses:
+• pending_payment  
+• awaiting_approval  
+• approved  
+• rejected  
+• completed
+
+Buyer, Seller, Admin order history APIs required.
+
+---
+
+REVIEWS & RATINGS
+-----------------------------------
+• Verified buyers only  
+• Star rating + comment  
+• Option to upload images/videos  
+• Admin moderation queue
+
+---
+
+MONETIZATION (NO COMMISSION)
+-----------------------------------
+Seller Subscription:
+• 2-month free trial  
+• Monthly plans  
+• Semester plans  
+• Admin manually activates/deactivates
+
+Featured Listings:
+• Sellers request featured status  
+• Manual payment  
+• Admin approves
+
+Ads Banners:
+• Sellers request banner ads  
+• Image + link + start/end times  
+• Admin approves
+
+Verified Badge Requests:
+• Admin approves after payment (manual)
+
+---
+
+ADMIN PANEL
+-----------------------------------
+Admin features:
+• Dashboard with counts and charts  
+• User management  
+• Store requests management  
+• Store approval/rejection  
+• Product management  
+• Category management  
+• Featured products control  
+• Ads banners control  
+• Reviews moderation  
+• Orders overview  
+• Chat with stores  
+• Assign verified badge
+• SMTP email configuration (multiple configs)  
+• Test email sending  
+• Email campaigns (select audience, live counter)  
+• Push notifications (PWA)
+
+---
+
+SUPPORT ADMIN SYSTEM
+-----------------------------------
+• Create support admins  
+• Select granular permissions  
+• Full permission = super admin
+
+---
+
+PWA REQUIREMENTS
+-----------------------------------
+• Installable on iOS & Android  
+• Offline fallback pages  
+• Service worker caching  
+• Responsive UI
+
+---
+
+DATABASE (PostgreSQL)
+-----------------------------------
+• users  
+• otp_logs  
+• stores  
+• store_requests  
+• products  
+• categories  
+• orders  
+• chats  
+• messages  
+• reviews  
+• subscriptions  
+• featured_products  
+• ads_banners  
+• verification_requests  
+• admin_roles  
+• smtp_configs  
+• notifications  
+• activity_logs
+
+---
+
+ROUTE & FEATURE VERIFICATION
+-----------------------------------
+After implementing features, AI must cross-verify:
+• All frontend pages connect to backend APIs  
+• No broken routes  
+• All forms, flows, and data persistence 100% working  
+• Responses use consistent naming conventions
+
+---
+
+GENERAL RULES
+-----------------------------------
+• No placeholder logic  
+• No dead or unconnected pages  
+• All interactive elements functional  
+• UI production grade and optimized  
+• Proper error handling
+
+END OF PROMPT
+
