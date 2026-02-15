@@ -135,25 +135,24 @@ def _seed_admin(app):
     """Create default super admin if no admin exists in the database."""
     try:
         from .models import User, UserRole
-        admin = User.query.filter(
-            User.role.in_([UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value])
-        ).first()
+        admin_email = os.getenv('ADMIN_EMAIL', 'admin@maumart.com')
+        admin_password = os.getenv('ADMIN_PASSWORD', 'Admin123!')
         
-        if not admin:
-            admin_email = os.getenv('ADMIN_EMAIL', 'admin@maumart.com')
-            admin_password = os.getenv('ADMIN_PASSWORD', 'Admin123!')
-            
-            admin = User(
+        # Check if user with that email EXACTLY exists (even if not admin yet)
+        user = User.query.filter_by(email=admin_email.lower()).first()
+        
+        if not user:
+            user = User(
                 first_name='Super',
                 last_name='Admin',
-                email=admin_email,
+                email=admin_email.lower(),
                 phone='00000000000',
                 role=UserRole.SUPER_ADMIN.value,
                 is_verified=True,
                 is_active=True
             )
-            admin.set_password(admin_password)
-            db.session.add(admin)
+            user.set_password(admin_password)
+            db.session.add(user)
             db.session.commit()
             print(f'\n{"="*50}')
             print(f'🔑 SUPER ADMIN CREATED')
@@ -162,6 +161,22 @@ def _seed_admin(app):
             print(f'   ⚠️  CHANGE THE PASSWORD AFTER FIRST LOGIN!')
             print(f'{"="*50}\n')
         else:
-            print(f'✅ Admin account exists: {admin.email}')
+            # User exists, ensure they are verified admin
+            changed = False
+            if user.role != UserRole.SUPER_ADMIN.value:
+                user.role = UserRole.SUPER_ADMIN.value
+                changed = True
+            if not user.is_verified:
+                user.is_verified = True
+                changed = True
+            if not user.is_active:
+                user.is_active = True
+                changed = True
+                
+            if changed:
+                db.session.commit()
+                print(f'✅ Existing user {admin_email} upgraded to SUPER_ADMIN and verified.')
+            else:
+                print(f'✅ Admin account ready: {user.email}')
     except Exception as e:
         print(f'⚠️  Could not seed admin: {e}')

@@ -2,6 +2,8 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import current_app
+import traceback
+import socket
 
 
 def send_otp_email(to_email, otp, purpose='Verification'):
@@ -80,18 +82,27 @@ def send_otp_email(to_email, otp, purpose='Verification'):
         msg.attach(MIMEText(html, 'html'))
         
         # Send email
-        with smtplib.SMTP(mail_server, mail_port) as server:
-            if mail_use_tls:
-                server.starttls()
-            server.login(mail_username, mail_password)
-            server.sendmail(sender, to_email, msg.as_string())
+        if int(mail_port) == 465:
+            with smtplib.SMTP_SSL(mail_server, mail_port, timeout=10) as server:
+                server.login(mail_username, mail_password)
+                server.sendmail(sender, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(mail_server, mail_port, timeout=10) as server:
+                if mail_use_tls:
+                    server.starttls()
+                server.login(mail_username, mail_password)
+                server.sendmail(sender, to_email, msg.as_string())
         
         print("✅ Email sent successfully!")
         return True
         
     except Exception as e:
-        print(f"⚠️  Failed to send email: {str(e)}")
-        print("    OTP has been printed to console above.")
+        print(f"❌ Failed to send email to {to_email}")
+        print(f"   Error Type: {type(e).__name__}")
+        print(f"   Error Message: {str(e)}")
+        print("   Full Traceback:")
+        traceback.print_exc()
+        print("   OTP has been printed to console above.")
         return False
 
 
@@ -171,15 +182,40 @@ def send_smtp_email(to_email, subject, body, config=None, html=None):
             msg.attach(MIMEText(body, 'plain'))
         
         # Send email
-        with smtplib.SMTP(server_host, server_port) as server:
-            if use_tls:
-                server.starttls()
-            server.login(username, password)
-            server.sendmail(from_email, to_email, msg.as_string())
+        print(f"🚀 Attempting SMTP connection to {server_host}:{server_port} (Port 465: {server_port == 465})")
+        
+        try:
+            if int(server_port) == 465:
+                print("🔒 Using SMTP_SSL...")
+                with smtplib.SMTP_SSL(server_host, server_port, timeout=15) as server:
+                    print("🔑 Attempting Login...")
+                    server.login(username, password)
+                    print("📤 Sending Mail...")
+                    server.sendmail(from_email, to_email, msg.as_string())
+            else:
+                print("🔓 Using standard SMTP...")
+                with smtplib.SMTP(server_host, server_port, timeout=15) as server:
+                    if use_tls:
+                        print("✨ Starting TLS...")
+                        server.starttls()
+                    print("🔑 Attempting Login...")
+                    server.login(username, password)
+                    print("📤 Sending Mail...")
+                    server.sendmail(from_email, to_email, msg.as_string())
+        except socket.timeout:
+            print(f"⏰ Connection to {server_host}:{server_port} timed out after 15 seconds.")
+            raise
+        except Exception as conn_err:
+            print(f"📍 Connection/Handshake Error: {type(conn_err).__name__}: {conn_err}")
+            raise
             
-        print(f"✅ Email sent to {to_email} via {server_host}")
+        print(f"✅ Email successfully sent to {to_email} via {server_host}")
         return True
     except Exception as e:
-        print(f"⚠️  Failed to send SMTP email to {to_email}: {str(e)}")
+        print(f"❌ Failed to send SMTP email to {to_email}")
+        print(f"   Error Type: {type(e).__name__}")
+        print(f"   Error Message: {str(e)}")
+        print("   Full Traceback:")
+        traceback.print_exc()
         return False
 
