@@ -53,23 +53,14 @@ def update_profile():
     
     # Handle profile picture upload
     if 'profile_picture' in request.files:
-        from flask import current_app
         from werkzeug.utils import secure_filename
-        import os
+        from app.services.storage import upload_file
         
         file = request.files['profile_picture']
         if file and file.filename:
-            # Create upload directory if it doesn't exist
-            upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'users')
-            os.makedirs(upload_folder, exist_ok=True)
-            
-            # Generate filename
             filename = f"user_{user_id}_{secure_filename(file.filename)}"
-            filepath = os.path.join(upload_folder, filename)
-            file.save(filepath)
-            
-            # Update avatar URL
-            user.avatar_url = f'/api/v1/uploads/users/{filename}'
+            url = upload_file(file, filename, folder='users')
+            user.avatar_url = url
     
     db.session.commit()
     

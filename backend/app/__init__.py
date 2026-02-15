@@ -57,6 +57,9 @@ def create_app(config_name=None):
     # Auto-create any missing tables (safe no-op for existing tables)
     with app.app_context():
         db.create_all()
+        
+        # Auto-create super admin if none exists
+        _seed_admin(app)
     
     # Register blueprints
     from .routes import auth, users, stores, products, categories, orders, chat, reviews, admin, uploads, subscriptions, notifications, wishlist, reports
@@ -126,3 +129,39 @@ def create_app(config_name=None):
         return None
     
     return app
+
+
+def _seed_admin(app):
+    """Create default super admin if no admin exists in the database."""
+    try:
+        from .models import User, UserRole
+        admin = User.query.filter(
+            User.role.in_([UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value])
+        ).first()
+        
+        if not admin:
+            admin_email = os.getenv('ADMIN_EMAIL', 'admin@maumart.com')
+            admin_password = os.getenv('ADMIN_PASSWORD', 'Admin123!')
+            
+            admin = User(
+                first_name='Super',
+                last_name='Admin',
+                email=admin_email,
+                phone='00000000000',
+                role=UserRole.SUPER_ADMIN.value,
+                is_verified=True,
+                is_active=True
+            )
+            admin.set_password(admin_password)
+            db.session.add(admin)
+            db.session.commit()
+            print(f'\n{"="*50}')
+            print(f'🔑 SUPER ADMIN CREATED')
+            print(f'   Email: {admin_email}')
+            print(f'   Password: {admin_password}')
+            print(f'   ⚠️  CHANGE THE PASSWORD AFTER FIRST LOGIN!')
+            print(f'{"="*50}\n')
+        else:
+            print(f'✅ Admin account exists: {admin.email}')
+    except Exception as e:
+        print(f'⚠️  Could not seed admin: {e}')

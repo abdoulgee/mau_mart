@@ -4,6 +4,7 @@ from datetime import datetime
 import os
 import re
 from werkzeug.utils import secure_filename
+from app.services.storage import upload_file
 
 from app import db
 from app.models import Product, ProductMedia, Store, Category, User, ProductType, Review, Order, OrderStatus, AdsBanner
@@ -197,13 +198,11 @@ def create_product():
     
     # Handle media uploads
     media_files = request.files.getlist('media')
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'products')
     
     for i, file in enumerate(media_files[:4]):  # Max 4 media files
         if file and file.filename:
             filename = f"{product.id}_{i}_{secure_filename(file.filename)}"
-            filepath = os.path.join(upload_folder, filename)
-            file.save(filepath)
+            url = upload_file(file, filename, folder='products')
             
             # Determine media type
             extension = filename.rsplit('.', 1)[-1].lower()
@@ -211,7 +210,7 @@ def create_product():
             
             media = ProductMedia(
                 product_id=product.id,
-                url=f'/api/v1/uploads/products/{filename}',
+                url=url,
                 media_type=media_type,
                 sort_order=i
             )
@@ -267,20 +266,18 @@ def update_product(product_id):
     if media_files and media_files[0].filename:
         # Count existing media
         existing_count = ProductMedia.query.filter_by(product_id=product.id).count()
-        upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'products')
         
         for i, file in enumerate(media_files[:4 - existing_count]):
             if file and file.filename:
                 filename = f"{product.id}_{existing_count + i}_{secure_filename(file.filename)}"
-                filepath = os.path.join(upload_folder, filename)
-                file.save(filepath)
+                url = upload_file(file, filename, folder='products')
                 
                 extension = filename.rsplit('.', 1)[-1].lower()
                 media_type = 'video' if extension in current_app.config.get('ALLOWED_VIDEO_EXTENSIONS', []) else 'image'
                 
                 media = ProductMedia(
                     product_id=product.id,
-                    url=f'/api/v1/uploads/products/{filename}',
+                    url=url,
                     media_type=media_type,
                     sort_order=existing_count + i
                 )

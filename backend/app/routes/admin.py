@@ -816,12 +816,11 @@ def create_ad():
     
     image_url = ''
     if 'image' in request.files:
+        from app.services.storage import upload_file
         file = request.files['image']
         if file and file.filename:
             filename = f"ad_{int(datetime.utcnow().timestamp())}_{secure_filename(file.filename)}"
-            upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'ads')
-            file.save(os.path.join(upload_folder, filename))
-            image_url = f"/api/v1/uploads/ads/{filename}"
+            image_url = upload_file(file, filename, folder='ads')
     
     if not image_url:
         return jsonify({'message': 'Image is required for ad banner'}), 400
@@ -865,12 +864,11 @@ def update_ad(ad_id):
         ad.is_active = request.form['is_active'].lower() == 'true'
     
     if 'image' in request.files:
+        from app.services.storage import upload_file
         file = request.files['image']
         if file and file.filename:
             filename = f"ad_{int(datetime.utcnow().timestamp())}_{secure_filename(file.filename)}"
-            upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'ads')
-            file.save(os.path.join(upload_folder, filename))
-            ad.image_url = f"/api/v1/uploads/ads/{filename}"
+            ad.image_url = upload_file(file, filename, folder='ads')
     
     db.session.commit()
     return jsonify({'message': 'Ad updated', 'ad': {
