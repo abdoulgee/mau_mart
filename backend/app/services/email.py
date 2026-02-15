@@ -181,41 +181,51 @@ def send_smtp_email(to_email, subject, body, config=None, html=None):
             msg['To'] = to_email
             msg.attach(MIMEText(body, 'plain'))
         
-        # Send email
-        print(f"🚀 Attempting SMTP connection to {server_host}:{server_port} (Port 465: {server_port == 465})")
-        
         try:
-            if int(server_port) == 465:
-                print("🔒 Using SMTP_SSL...")
-                with smtplib.SMTP_SSL(server_host, server_port, timeout=15) as server:
-                    print("🔑 Attempting Login...")
-                    server.login(username, password)
-                    print("📤 Sending Mail...")
-                    server.sendmail(from_email, to_email, msg.as_string())
-            else:
-                print("🔓 Using standard SMTP...")
-                with smtplib.SMTP(server_host, server_port, timeout=15) as server:
-                    if use_tls:
-                        print("✨ Starting TLS...")
-                        server.starttls()
-                    print("🔑 Attempting Login...")
-                    server.login(username, password)
-                    print("📤 Sending Mail...")
-                    server.sendmail(from_email, to_email, msg.as_string())
-        except socket.timeout:
-            print(f"⏰ Connection to {server_host}:{server_port} timed out after 15 seconds.")
-            raise
-        except Exception as conn_err:
-            print(f"📍 Connection/Handshake Error: {type(conn_err).__name__}: {conn_err}")
-            raise
+            # Check DNS resolution
+            try:
+                ip = socket.gethostbyname(server_host)
+                print(f"🔍 DNS Check: {server_host} resolved to {ip}")
+            except Exception as dns_err:
+                print(f"❌ DNS Resolution Failed for {server_host}: {dns_err}")
+                raise
+                
+            # Send email
+            is_port_465 = int(server_port) == 465
+            print(f"🚀 Attempting SMTP connection to {server_host}:{server_port} (SSL Mode: {is_port_465})")
             
-        print(f"✅ Email successfully sent to {to_email} via {server_host}")
-        return True
-    except Exception as e:
-        print(f"❌ Failed to send SMTP email to {to_email}")
-        print(f"   Error Type: {type(e).__name__}")
-        print(f"   Error Message: {str(e)}")
-        print("   Full Traceback:")
-        traceback.print_exc()
-        return False
+            try:
+                if is_port_465:
+                    print("🔒 Using SMTP_SSL...")
+                    with smtplib.SMTP_SSL(server_host, server_port, timeout=15) as server:
+                        print("🔑 Connected. Attempting Login...")
+                        server.login(username, password)
+                        print(f"📤 Sending Mail to {to_email}...")
+                        server.sendmail(from_email, to_email, msg.as_string())
+                else:
+                    print(f"🔓 Using standard SMTP (Port {server_port})...")
+                    with smtplib.SMTP(server_host, server_port, timeout=15) as server:
+                        if use_tls:
+                            print("✨ Connection established. Starting TLS...")
+                            server.starttls()
+                        print("🔑 Attempting Login...")
+                        server.login(username, password)
+                        print(f"📤 Sending Mail to {to_email}...")
+                        server.sendmail(from_email, to_email, msg.as_string())
+            except socket.timeout:
+                print(f"⏰ Connection to {server_host}:{server_port} timed out after 15 seconds. This usually means the port is blocked by the host.")
+                raise
+            except Exception as conn_err:
+                print(f"📍 Connection/Handshake Error: {type(conn_err).__name__}: {conn_err}")
+                raise
+                
+            print(f"✅ Email successfully sent to {to_email}")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to send SMTP email to {to_email}")
+            print(f"   Error Type: {type(e).__name__}")
+            print(f"   Error Message: {str(e)}")
+            print("   Full Traceback:")
+            traceback.print_exc()
+            return False
 
