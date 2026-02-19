@@ -12,7 +12,7 @@ from .config import config
 db = SQLAlchemy()
 migrate = Migrate()
 jwt = JWTManager()
-socketio = SocketIO()
+socketio = SocketIO(manage_session=False)
 
 
 def create_app(config_name=None):

@@ -21,8 +21,10 @@ def send_otp_email(to_email, otp, purpose='Verification'):
         mail_server = current_app.config.get('MAIL_SERVER')
         mail_username = current_app.config.get('MAIL_USERNAME')
         mail_password = current_app.config.get('MAIL_PASSWORD')
+        mail_port = current_app.config.get('MAIL_PORT', 587)
+        mail_use_tls = current_app.config.get('MAIL_USE_TLS', True)
         
-        print(f"📧 SMTP Config: server={mail_server}, username={mail_username}, password={'SET' if mail_password else 'EMPTY'}")
+        print(f"📧 SMTP Config: server={mail_server}, port={mail_port}, username={mail_username}, password={'SET' if mail_password else 'EMPTY'}")
         
         if not mail_username or not mail_password:
             print("⚠️  SMTP not configured. OTP printed to console only.")
