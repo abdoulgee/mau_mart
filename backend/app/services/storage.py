@@ -52,6 +52,9 @@ def upload_file(file_data, filename, bucket='uploads', folder=''):
             # Fall through to local storage
 
     # Local storage fallback
+    backend_url = os.getenv('BACKEND_URL', '').rstrip('/')
+    upload_path = f'/api/v1/uploads/{folder}/{filename}'
+    
     upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], folder)
     os.makedirs(upload_folder, exist_ok=True)
     filepath = os.path.join(upload_folder, filename)
@@ -63,7 +66,7 @@ def upload_file(file_data, filename, bucket='uploads', folder=''):
         with open(filepath, 'wb') as f:
             f.write(file_data)
 
-    return f'/api/v1/uploads/{folder}/{filename}'
+    return f"{backend_url}{upload_path}" if backend_url else upload_path
 
 
 def get_file_url(folder, filename):
@@ -72,4 +75,7 @@ def get_file_url(folder, filename):
     if client:
         path = f"{folder}/{filename}"
         return client.storage.from_('uploads').get_public_url(path)
-    return f'/api/v1/uploads/{folder}/{filename}'
+    
+    backend_url = os.getenv('BACKEND_URL', '').rstrip('/')
+    upload_path = f'/api/v1/uploads/{folder}/{filename}'
+    return f"{backend_url}{upload_path}" if backend_url else upload_path

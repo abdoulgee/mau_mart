@@ -5,6 +5,7 @@ import api from '../services/api'
 import { Skeleton, ProductCardSkeleton } from '../components/ui/Skeleton'
 import ReportModal from '../components/ui/ReportModal'
 import useAuthStore from '../store/authStore'
+import getImageUrl from '../utils/imageUrl'
 
 function ProductCard({ product }) {
     return (
@@ -12,7 +13,7 @@ function ProductCard({ product }) {
             <div className="bg-white rounded-2xl shadow-card overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-300">
                 <div className="aspect-square relative overflow-hidden">
                     {product.media?.[0]?.url ? (
-                        <img src={product.media[0].url} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                        <img src={getImageUrl(product.media[0].url)} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                     ) : (
                         <div className="w-full h-full bg-gradient-to-br from-surface-100 to-surface-200 flex items-center justify-center">
                             <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
@@ -93,7 +94,7 @@ export default function StoreDetail() {
 
             {/* Store Banner */}
             <div className="relative h-40 bg-gradient-to-br from-primary-500 to-primary-700">
-                {store.banner_url && <img src={store.banner_url} alt="" className="w-full h-full object-cover" />}
+                {store.banner_url && <img src={getImageUrl(store.banner_url)} alt="" className="w-full h-full object-cover" />}
                 <div className="absolute inset-0 bg-black/20" />
             </div>
 
@@ -102,7 +103,7 @@ export default function StoreDetail() {
                 <div className="flex items-start gap-4">
                     <div className="w-20 h-20 -mt-14 rounded-2xl bg-white shadow-elevated flex items-center justify-center overflow-hidden border-4 border-white ring-2 ring-primary-200">
                         {store.logo_url ? (
-                            <img src={store.logo_url} alt={store.name} className="w-full h-full object-cover" />
+                            <img src={getImageUrl(store.logo_url)} alt={store.name} className="w-full h-full object-cover" />
                         ) : (
                             <svg className="w-8 h-8 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" /></svg>
                         )}

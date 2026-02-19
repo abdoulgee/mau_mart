@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { Header } from '../components/navigation/Header'
 import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
+import getImageUrl from '../utils/imageUrl'
 
 export default function Profile() {
     const { user, logout, isAuthenticated } = useAuthStore()
@@ -65,7 +66,11 @@ export default function Profile() {
                     <div className="absolute -top-8 -right-8 w-32 h-32 bg-primary-500/20 rounded-full blur-2xl" />
                     <div className="relative flex items-center gap-4">
                         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white text-xl font-bold overflow-hidden shadow-glow ring-2 ring-primary-400/30">
-                            {user.avatar_url ? (<img src={user.avatar_url} alt={user.first_name} className="w-full h-full object-cover" />) : (user.first_name[0] + user.last_name[0])}
+                            {user.avatar_url ? (
+                                <img src={getImageUrl(user.avatar_url)} alt={user.first_name} className="w-full h-full object-cover" />
+                            ) : (
+                                (user.first_name?.[0] || '') + (user.last_name?.[0] || '') || '?'
+                            )}
                         </div>
                         <div className="flex-1">
                             <h2 className="text-lg font-bold">{user.first_name} {user.last_name}</h2>

@@ -7,6 +7,7 @@ import { SkeletonProductCard as ProductCardSkeleton } from '../components/ui/Ske
 
 import useCategoryStore from '../store/categoryStore'
 import AdBanner from '../components/ui/AdBanner'
+import getImageUrl from '../utils/imageUrl'
 
 // Helper for category colors since they aren't in the DB
 const categoryColors = [
@@ -32,7 +33,7 @@ function ProductCard({ product }) {
                 <div className="aspect-square relative overflow-hidden">
                     {product.media?.[0]?.url ? (
                         <img
-                            src={product.media[0].url}
+                            src={getImageUrl(product.media[0].url)}
                             alt={product.title}
                             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                             loading="lazy"
@@ -81,7 +82,7 @@ function StoreCard({ store }) {
             <div className="bg-white rounded-2xl shadow-card p-4 text-center hover:shadow-card-hover transition-all duration-300">
                 <div className="w-14 h-14 mx-auto mb-2.5 rounded-2xl bg-gradient-to-br from-primary-100 to-primary-50 flex items-center justify-center overflow-hidden ring-2 ring-primary-200/50">
                     {store.logo_url ? (
-                        <img src={store.logo_url} alt={store.name} className="w-full h-full object-cover" />
+                        <img src={getImageUrl(store.logo_url)} alt={store.name} className="w-full h-full object-cover" />
                     ) : (
                         <svg className="w-7 h-7 text-primary-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />

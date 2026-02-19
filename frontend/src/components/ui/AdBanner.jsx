@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../../services/api'
 import { Skeleton } from './Skeleton'
+import getImageUrl from '../../utils/imageUrl'
 
 export default function AdBanner({ position }) {
     const [ads, setAds] = useState([])
@@ -68,7 +69,7 @@ function AdContent({ ad }) {
     return (
         <div className="relative w-full h-full bg-gray-100">
             <img
-                src={ad.image_url}
+                src={getImageUrl(ad.image_url)}
                 alt={ad.title}
                 className="w-full h-full object-cover"
             />

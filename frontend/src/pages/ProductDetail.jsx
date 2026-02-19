@@ -8,6 +8,7 @@ import { Skeleton } from '../components/ui/Skeleton'
 import ProductReviews from '../components/ui/ProductReviews'
 import api from '../services/api'
 import ReportModal from '../components/ui/ReportModal'
+import getImageUrl from '../utils/imageUrl'
 
 export default function ProductDetail() {
     const { id } = useParams()
@@ -123,7 +124,7 @@ export default function ProductDetail() {
                 <div className="aspect-square bg-white">
                     {product.media && product.media.length > 0 ? (
                         <img
-                            src={product.media[selectedMedia]?.url}
+                            src={getImageUrl(product.media[selectedMedia]?.url)}
                             alt={product.title}
                             className="w-full h-full object-cover"
                         />
@@ -151,7 +152,7 @@ export default function ProductDetail() {
                                 className={`w-12 h-12 rounded-lg overflow-hidden border-2 transition-all ${selectedMedia === i ? 'border-primary-500 scale-110' : 'border-white/50'
                                     }`}
                             >
-                                <img src={media.url} alt="" className="w-full h-full object-cover" />
+                                <img src={getImageUrl(media.url)} alt="" className="w-full h-full object-cover" />
                             </button>
                         ))}
                     </div>
@@ -190,7 +191,7 @@ export default function ProductDetail() {
                     >
                         <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary-100 to-primary-200 flex items-center justify-center overflow-hidden">
                             {product.store.logo_url ? (
-                                <img src={product.store.logo_url} alt={product.store.name} className="w-full h-full object-cover" />
+                                <img src={getImageUrl(product.store.logo_url)} alt={product.store.name} className="w-full h-full object-cover" />
                             ) : (
                                 <svg className="w-5 h-5 text-primary-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5" /></svg>
                             )}

@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom'
 import useProductStore from '../store/productStore'
 import { ProductCardSkeleton } from '../components/ui/Skeleton'
 import AdBanner from '../components/ui/AdBanner'
+import getImageUrl from '../utils/imageUrl'
 
 function ProductCard({ product }) {
     return (
@@ -10,7 +11,7 @@ function ProductCard({ product }) {
             <div className="bg-white rounded-2xl shadow-card overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-300">
                 <div className="aspect-square relative overflow-hidden">
                     {product.media?.[0]?.url ? (
-                        <img src={product.media[0].url} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                        <img src={getImageUrl(product.media[0].url)} alt={product.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" loading="lazy" />
                     ) : (
                         <div className="w-full h-full bg-gradient-to-br from-surface-100 to-surface-200 flex items-center justify-center">
                             <svg className="w-12 h-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
