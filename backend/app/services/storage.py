@@ -44,9 +44,11 @@ def upload_file(file_data, filename, bucket='uploads', folder=''):
             )
             # Return public URL
             public_url = client.storage.from_(bucket).get_public_url(path)
+            print(f"✅ Supabase Upload Success: bucket={bucket}, path={path}")
+            print(f"🔗 Public URL: {public_url}")
             return public_url
         except Exception as e:
-            print(f"Supabase upload failed, falling back to local: {e}")
+            print(f"❌ Supabase upload failed, falling back to local: {e}")
             # Fall through to local storage
 
     # Local storage fallback

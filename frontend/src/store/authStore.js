@@ -180,6 +180,19 @@ const useAuthStore = create(
                 api.setAuthToken(null)
             },
 
+            // Refresh user profile data
+            fetchProfile: async () => {
+                try {
+                    const response = await api.get('/api/v1/users/profile')
+                    const { user } = response.data
+                    set({ user })
+                    return { success: true, user }
+                } catch (error) {
+                    console.error('Failed to fetch profile:', error)
+                    return { success: false, error }
+                }
+            },
+
             // Clear error
             clearError: () => {
                 set({ error: null })

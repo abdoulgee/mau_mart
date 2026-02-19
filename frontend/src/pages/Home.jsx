@@ -111,6 +111,12 @@ export default function Home() {
         connectSocket()
         fetchCategories()
 
+        // Refresh profile if logged in to catch status updates (e.g. store approval)
+        const { isAuthenticated, fetchProfile } = useAuthStore.getState()
+        if (isAuthenticated) {
+            fetchProfile()
+        }
+
         const loadData = async () => {
             try {
                 await Promise.all([
