@@ -85,12 +85,15 @@ def send_otp_email(to_email, otp, purpose='Verification'):
         if int(mail_port) == 465:
             with smtplib.SMTP_SSL(mail_server, mail_port, timeout=10) as server:
                 server.login(mail_username, mail_password)
+                print(f"📤 [SMTP] Sending actual mail to: {to_email}")
+                print(f"📤 [SMTP] Sending actual mail from {sender} to: {to_email}")
                 server.sendmail(sender, to_email, msg.as_string())
         else:
             with smtplib.SMTP(mail_server, mail_port, timeout=10) as server:
                 if mail_use_tls:
                     server.starttls()
                 server.login(mail_username, mail_password)
+                print(f"📤 [SMTP] Sending actual mail from {sender} to: {to_email}")
                 server.sendmail(sender, to_email, msg.as_string())
         
         print("✅ Email sent successfully!")

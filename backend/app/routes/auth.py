@@ -3,6 +3,7 @@ from flask_jwt_extended import create_access_token, create_refresh_token, jwt_re
 from datetime import datetime, timedelta
 import random
 import string
+import traceback
 
 from app import db
 from app.models import User, OtpLog, AppSettings
@@ -31,11 +32,6 @@ def register():
     if User.query.filter_by(email=data['email'].lower()).first():
         return jsonify({'message': 'Email already registered'}), 409
     
-    # Check if student_id exists (if provided)
-    if data.get('student_id'):
-        if User.query.filter_by(student_id=data['student_id']).first():
-            return jsonify({'message': 'Student ID already registered'}), 409
-    
     # Check if email verification is required
     require_verification = True
     try:
@@ -44,6 +40,15 @@ def register():
             require_verification = settings_row.data.get('require_email_verification', True)
     except:
         pass
+
+    # Aggressively ensure student_id is None if empty or blank
+    student_id = data.get('student_id')
+    if student_id is not None:
+        student_id = str(student_id).strip()
+        if not student_id:
+            student_id = None
+            
+    print(f"🛠️ [DEBUG] Registering user: {data['email']}, Student ID: '{student_id}' (Type: {type(student_id)})")
     
     # Create user
     user = User(
@@ -51,13 +56,19 @@ def register():
         last_name=data['last_name'],
         email=data['email'].lower(),
         phone=data['phone'],
-        student_id=data.get('student_id'),
+        student_id=student_id,
         is_verified=not require_verification  # Auto-verify if verification not required
     )
     user.set_password(data['password'])
     
-    db.session.add(user)
-    db.session.commit()
+    try:
+        db.session.add(user)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Database error during registration: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'message': f'Registration failed: {str(e)}'}), 500
     
     if require_verification:
         # Generate and send OTP

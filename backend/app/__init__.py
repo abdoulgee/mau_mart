@@ -40,7 +40,7 @@ def create_app(config_name=None):
             "supports_credentials": True
         }
     })
-    socketio.init_app(app, cors_allowed_origins="*", async_mode='eventlet')
+    socketio.init_app(app, cors_allowed_origins="*", async_mode='eventlet', manage_session=False)
     
     # Create upload folder if not exists
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -135,6 +135,19 @@ def _seed_admin(app):
     """Create default super admin if no admin exists in the database."""
     try:
         from .models import User, UserRole
+        
+        # 🧹 DATABASE CLEANUP: Fix existing empty strings that cause UniqueViolation
+        # This resolves the issue where multiple users with blank student_id crash registration
+        try:
+            empty_sid_count = User.query.filter_by(student_id='').count()
+            if empty_sid_count > 0:
+                User.query.filter_by(student_id='').update({User.student_id: None}, synchronize_session=False)
+                db.session.commit()
+                print(f"🧹 Cleanup: Converted {empty_sid_count} empty student_ids to NULL.")
+        except Exception as cleanup_err:
+            db.session.rollback()
+            print(f"⚠️ Cleanup failed (non-critical): {cleanup_err}")
+
         admin_email = os.getenv('ADMIN_EMAIL', 'admin@maumart.com')
         admin_password = os.getenv('ADMIN_PASSWORD', 'Admin123!')
         
