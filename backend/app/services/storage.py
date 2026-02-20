@@ -7,9 +7,12 @@ from flask import current_app
 
 
 def _get_supabase_client():
-    """Get Supabase client if configured, else return None."""
+    """Get Supabase client if configured, else return None.
+    Prefers SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) over SUPABASE_KEY (anon).
+    """
     url = os.getenv('SUPABASE_URL')
-    key = os.getenv('SUPABASE_KEY')
+    # Prefer service_role key for server-side uploads (bypasses RLS)
+    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY')
     if not url or not key or key == 'YOUR_SUPABASE_SERVICE_ROLE_KEY_HERE':
         return None
     try:
