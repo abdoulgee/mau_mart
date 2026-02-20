@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { LogoHeader } from '../components/navigation/Header'
 import useProductStore from '../store/productStore'
+import useAuthStore from '../store/authStore'
 import useUIStore from '../store/uiStore'
 import { SkeletonProductCard as ProductCardSkeleton } from '../components/ui/Skeleton'
 
