@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app import db
-from app.models import User
+from app.models import User, Store
 
 bp = Blueprint('users', __name__)
 
@@ -61,6 +61,12 @@ def update_profile():
             filename = f"user_{user_id}_{secure_filename(file.filename)}"
             url = upload_file(file, filename, folder='users')
             user.avatar_url = url
+            
+            # Sync profile picture to store logo if user is a seller
+            if user.is_seller:
+                store = Store.query.filter_by(owner_id=user.id).first()
+                if store:
+                    store.logo_url = url
     
     db.session.commit()
     

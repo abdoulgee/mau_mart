@@ -2,6 +2,7 @@ import { useNavigate, useLocation, NavLink } from 'react-router-dom'
 import useAuthStore from '../../store/authStore'
 import useChatStore from '../../store/chatStore'
 import { useEffect, useState } from 'react'
+import getImageUrl from '../../utils/imageUrl'
 
 // Shared Navigation Links for Desktop
 function NavLinks() {
@@ -67,12 +68,14 @@ function Header({
         }
     }
 
-    // Site name for desktop header
+    // Site name + logo for desktop header
     const [siteName, setSiteName] = useState('MAU MART')
+    const [siteLogo, setSiteLogo] = useState('')
     useEffect(() => {
         try {
             const settings = JSON.parse(localStorage.getItem('app-settings') || '{}')
             if (settings.site_name) setSiteName(settings.site_name)
+            if (settings.site_logo_url) setSiteLogo(settings.site_logo_url)
         } catch (e) { }
     }, [])
 
@@ -107,10 +110,14 @@ function Header({
                         onClick={() => navigate('/')}
                         className="hidden lg:flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex items-center justify-center shadow-glow">
-                            <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                            </svg>
+                        <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex items-center justify-center shadow-glow overflow-hidden">
+                            {siteLogo ? (
+                                <img src={getImageUrl(siteLogo)} alt={siteName} className="w-full h-full object-cover" />
+                            ) : (
+                                <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                                </svg>
+                            )}
                         </div>
                         <span className="text-lg font-extrabold text-gold tracking-tighter uppercase">{siteName}</span>
                     </div>
@@ -169,10 +176,8 @@ export function SearchHeader({ placeholder = 'Search products...', onSearch, val
                     onClick={() => navigate('/')}
                     className="hidden lg:flex items-center gap-2.5 cursor-pointer hover:opacity-80 transition-opacity mr-4"
                 >
-                    <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex items-center justify-center shadow-glow">
-                        <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                        </svg>
+                    <div className="w-8 h-8 bg-gradient-to-br from-primary-400 to-primary-600 rounded-lg flex items-center justify-center shadow-glow overflow-hidden">
+                        {(() => { try { const s = JSON.parse(localStorage.getItem('app-settings') || '{}'); if (s.site_logo_url) return <img src={getImageUrl(s.site_logo_url)} alt="" className="w-full h-full object-cover" /> } catch (e) { } return <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg> })()}
                     </div>
                 </div>
 
@@ -209,12 +214,14 @@ export function LogoHeader() {
     const navigate = useNavigate()
     const { user } = useAuthStore()
 
-    // Dynamic site name from settings
+    // Dynamic site name + logo from settings
     const [siteName, setSiteName] = useState('MAU MART')
+    const [siteLogo, setSiteLogo] = useState('')
     useEffect(() => {
         try {
             const settings = JSON.parse(localStorage.getItem('app-settings') || '{}')
             if (settings.site_name) setSiteName(settings.site_name)
+            if (settings.site_logo_url) setSiteLogo(settings.site_logo_url)
         } catch (e) { }
     }, [])
 
@@ -227,10 +234,14 @@ export function LogoHeader() {
                         onClick={() => navigate('/')}
                         className="cursor-pointer flex items-center gap-2.5"
                     >
-                        <div className="w-9 h-9 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-glow">
-                            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-                            </svg>
+                        <div className="w-9 h-9 bg-gradient-to-br from-primary-400 to-primary-600 rounded-xl flex items-center justify-center shadow-glow overflow-hidden">
+                            {siteLogo ? (
+                                <img src={getImageUrl(siteLogo)} alt={siteName} className="w-full h-full object-cover" />
+                            ) : (
+                                <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                                </svg>
+                            )}
                         </div>
                         <span className="text-xl font-extrabold text-gold tracking-tight lowercase">
                             <span className="uppercase">{siteName.charAt(0)}</span>{siteName.slice(1)}

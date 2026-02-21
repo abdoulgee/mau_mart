@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Header } from '../components/navigation/Header'
 import useAuthStore from '../store/authStore'
@@ -10,6 +10,17 @@ export default function Profile() {
     const { addToast } = useUIStore()
     const navigate = useNavigate()
     const [showLogoutModal, setShowLogoutModal] = useState(false)
+    const [darkMode, setDarkMode] = useState(() => localStorage.getItem('theme') === 'dark')
+
+    useEffect(() => {
+        if (darkMode) {
+            document.documentElement.classList.add('dark')
+            localStorage.setItem('theme', 'dark')
+        } else {
+            document.documentElement.classList.remove('dark')
+            localStorage.setItem('theme', 'light')
+        }
+    }, [darkMode])
 
     const handleLogout = () => {
         logout()
@@ -144,6 +155,24 @@ export default function Profile() {
                 <div className="card">
                     <h3 className="font-bold text-sm text-gray-900 mb-3">Settings</h3>
                     <div className="space-y-0.5">{settingsItems.map((item, i) => <MenuItem key={i} item={item} />)}</div>
+
+                    {/* Dark Mode Toggle */}
+                    <div className="flex items-center justify-between p-3 rounded-xl hover:bg-surface-50 transition-colors mt-1">
+                        <div className="flex items-center gap-3">
+                            <span className="w-9 h-9 rounded-xl flex items-center justify-center text-gray-500 bg-gray-100">
+                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
+                            </span>
+                            <span className="font-semibold text-sm text-gray-700">Dark Mode</span>
+                        </div>
+                        <button
+                            onClick={() => setDarkMode(!darkMode)}
+                            className={`relative w-11 h-6 rounded-full transition-colors duration-200 ${darkMode ? 'bg-primary-500' : 'bg-gray-300'
+                                }`}
+                        >
+                            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${darkMode ? 'translate-x-5' : 'translate-x-0'
+                                }`} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Admin Panel */}

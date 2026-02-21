@@ -169,7 +169,13 @@ export default function Home() {
                                 to={`/category/${cat.slug}`}
                                 className={`p-4 rounded-2xl bg-gradient-to-br ${categoryColors[i % categoryColors.length]} text-white text-center hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300`}
                             >
-                                <span className="text-2xl block mb-1.5">{cat.icon || categoryIcons[i % categoryIcons.length]}</span>
+                                <span className="text-2xl block mb-1.5">
+                                    {cat.icon && cat.icon.trim().startsWith('<') ? (
+                                        <span className="inline-flex items-center justify-center w-7 h-7 [&>svg]:w-7 [&>svg]:h-7 [&>svg]:text-white" dangerouslySetInnerHTML={{ __html: cat.icon }} />
+                                    ) : (
+                                        cat.icon || categoryIcons[i % categoryIcons.length]
+                                    )}
+                                </span>
                                 <span className="text-xs font-semibold">{cat.name}</span>
                             </Link>
                         ))}

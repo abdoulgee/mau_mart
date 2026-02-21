@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api'
 import useUIStore from '../../store/uiStore'
 import useSettingsStore from '../../store/settingsStore'
+import getImageUrl from '../../utils/imageUrl'
 
 export default function AdminSettings() {
     const { settings: storeSettings, fetchSettings: refreshGlobal } = useSettingsStore()
@@ -26,7 +27,30 @@ export default function AdminSettings() {
     })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [uploadingLogo, setUploadingLogo] = useState(false)
+    const logoInputRef = useRef(null)
     const { addToast } = useUIStore()
+
+    const handleLogoUpload = async (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        setUploadingLogo(true)
+        try {
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('type', 'logo')
+            const response = await api.post('/api/v1/uploads/store', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            })
+            setSettings(prev => ({ ...prev, site_logo_url: response.data.url }))
+            addToast({ type: 'success', message: 'Logo uploaded! Click Save to apply.' })
+        } catch (error) {
+            addToast({ type: 'error', message: 'Failed to upload logo' })
+        } finally {
+            setUploadingLogo(false)
+            if (logoInputRef.current) logoInputRef.current.value = ''
+        }
+    }
 
     useEffect(() => {
         fetchSettings()
@@ -89,6 +113,34 @@ export default function AdminSettings() {
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Tagline</label>
                             <input type="text" name="site_tagline" value={settings.site_tagline} onChange={handleChange} className="input" />
+                        </div>
+                    </div>
+
+                    {/* Site Logo Upload */}
+                    <div className="mt-4 pt-4 border-t border-gray-100">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Site Logo</label>
+                        <p className="text-xs text-gray-400 mb-3">Upload a custom logo to replace the default icon in the header</p>
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center overflow-hidden shadow-glow">
+                                {settings.site_logo_url ? (
+                                    <img src={getImageUrl(settings.site_logo_url)} alt="Site Logo" className="w-full h-full object-cover" />
+                                ) : (
+                                    <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                                    </svg>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-2">
+                                <input type="file" ref={logoInputRef} className="hidden" accept="image/*" onChange={handleLogoUpload} />
+                                <button type="button" onClick={() => logoInputRef.current?.click()} disabled={uploadingLogo} className="btn-sm btn-primary">
+                                    {uploadingLogo ? 'Uploading...' : (settings.site_logo_url ? 'Change Logo' : 'Upload Logo')}
+                                </button>
+                                {settings.site_logo_url && (
+                                    <button type="button" onClick={() => setSettings(prev => ({ ...prev, site_logo_url: '' }))} className="btn-sm btn-ghost text-red-500 hover:bg-red-50">
+                                        Remove Logo
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>

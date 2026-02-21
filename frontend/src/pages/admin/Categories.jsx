@@ -84,7 +84,13 @@ export default function AdminCategories() {
                         ) : categories.length > 0 ? (
                             categories.map(cat => (
                                 <tr key={cat.id} className="hover:bg-gray-50">
-                                    <td className="p-4 text-2xl">{cat.icon || '📦'}</td>
+                                    <td className="p-4 text-2xl">
+                                        {cat.icon && cat.icon.trim().startsWith('<') ? (
+                                            <span className="inline-flex items-center justify-center w-8 h-8 [&>svg]:w-7 [&>svg]:h-7 [&>svg]:text-gray-700" dangerouslySetInnerHTML={{ __html: cat.icon }} />
+                                        ) : (
+                                            cat.icon || '📦'
+                                        )}
+                                    </td>
                                     <td className="p-4 font-medium text-gray-900">{cat.name}</td>
                                     <td className="p-4 text-gray-500">{cat.slug}</td>
                                     <td className="p-4 text-gray-600">{cat.product_count || 0}</td>
@@ -121,6 +127,22 @@ export default function AdminCategories() {
                                     {icons.map(icon => (
                                         <button key={icon} type="button" onClick={() => setFormData({ ...formData, icon })} className={`w-10 h-10 rounded-lg text-xl ${formData.icon === icon ? 'bg-primary-100 ring-2 ring-primary-500' : 'bg-gray-100 hover:bg-gray-200'}`}>{icon}</button>
                                     ))}
+                                </div>
+                                <div className="mt-3">
+                                    <label className="block text-xs font-medium text-gray-500 mb-1">Or paste SVG code:</label>
+                                    <textarea
+                                        value={formData.icon?.trim().startsWith('<') ? formData.icon : ''}
+                                        onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
+                                        className="input text-xs font-mono"
+                                        rows={3}
+                                        placeholder='<svg viewBox="0 0 24 24" ...>...</svg>'
+                                    />
+                                    {formData.icon?.trim().startsWith('<') && (
+                                        <div className="mt-2 flex items-center gap-2">
+                                            <span className="text-xs text-gray-500">Preview:</span>
+                                            <span className="inline-flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg [&>svg]:w-6 [&>svg]:h-6" dangerouslySetInnerHTML={{ __html: formData.icon }} />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                             <div className="flex gap-3 pt-2">

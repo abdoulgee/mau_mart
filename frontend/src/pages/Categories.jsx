@@ -43,7 +43,11 @@ export default function Categories() {
                     categories.map((category, i) => (
                         <Link key={category.id} to={`/category/${category.slug}`} className="card-hover flex items-center gap-4">
                             <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${categoryColors[i % categoryColors.length]} flex items-center justify-center text-2xl shadow-sm`}>
-                                {category.icon || categoryIcons[i % categoryIcons.length]}
+                                {category.icon && category.icon.trim().startsWith('<') ? (
+                                    <span className="inline-flex items-center justify-center w-7 h-7 [&>svg]:w-7 [&>svg]:h-7 [&>svg]:text-white" dangerouslySetInnerHTML={{ __html: category.icon }} />
+                                ) : (
+                                    category.icon || categoryIcons[i % categoryIcons.length]
+                                )}
                             </div>
                             <div className="flex-1">
                                 <h3 className="font-bold text-gray-900 text-sm">{category.name}</h3>
