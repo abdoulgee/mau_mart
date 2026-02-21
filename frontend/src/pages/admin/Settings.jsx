@@ -83,6 +83,8 @@ export default function AdminSettings() {
         try {
             await api.post('/api/v1/admin/settings', settings)
             addToast({ type: 'success', message: 'Settings saved!' })
+            // Persist to localStorage immediately so Header picks up logo/name
+            localStorage.setItem('app-settings', JSON.stringify(settings))
             // Refresh the global settings store so changes take effect everywhere
             refreshGlobal()
         } catch (error) {

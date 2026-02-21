@@ -24,10 +24,10 @@ const useSettingsStore = create((set, get) => ({
         try {
             const response = await api.get('/api/v1/settings')
             if (response.data.settings && Object.keys(response.data.settings).length > 0) {
-                set(state => ({
-                    settings: { ...state.settings, ...response.data.settings },
-                    loaded: true,
-                }))
+                const merged = { ...get().settings, ...response.data.settings }
+                set({ settings: merged, loaded: true })
+                // Persist to localStorage so Header/other components can read logo, name, etc.
+                localStorage.setItem('app-settings', JSON.stringify(merged))
             } else {
                 set({ loaded: true })
             }
