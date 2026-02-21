@@ -191,6 +191,6 @@ def _seed_admin(app):
                 print(f'✅ Existing user {admin_email} upgraded to SUPER_ADMIN and verified.')
             else:
                 print(f'✅ Admin account ready: {user.email}')
-                print("committed new with smtp toggle")
+                print("committed new with smtp toggleee")
     except Exception as e:
         print(f'⚠️  Could not seed admin: {e}')

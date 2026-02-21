@@ -7,15 +7,19 @@ import os
 
 
 def _get_email_provider():
-    """Get the configured email provider from AppSettings. Returns 'mailgun' or 'smtp'."""
+    """Get the configured email provider from AppSettings. Returns 'resend' or 'smtp'."""
     try:
         from app.models import AppSettings
         row = AppSettings.query.first()
         if row and row.data:
-            return row.data.get('email_provider', 'mailgun')
+            provider = row.data.get('email_provider', 'resend')
+            # Migrate old 'mailgun' setting to 'resend'
+            if provider == 'mailgun':
+                return 'resend'
+            return provider
     except Exception:
         pass
-    return 'mailgun'  # Default to mailgun
+    return 'resend'
 
 
 def _build_otp_html(otp, purpose):
@@ -51,41 +55,43 @@ def _build_otp_html(otp, purpose):
     """
 
 
-def _send_via_mailgun(to_email, subject, html, text=None):
-    """Send email via Mailgun HTTP API."""
-    api_key = os.getenv('MAILGUN_API_KEY')
-    domain = os.getenv('MAILGUN_DOMAIN')
-    from_email = os.getenv('MAILGUN_FROM_EMAIL', f'noreply@{domain}' if domain else '')
+def _send_via_resend(to_email, subject, html, text=None):
+    """Send email via Resend HTTP API."""
+    api_key = os.getenv('RESEND_API_KEY')
+    from_email = os.getenv('RESEND_FROM_EMAIL', 'onboarding@resend.dev')
     # Wrap plain email in display name
     if from_email and '@' in from_email and '<' not in from_email:
         from_email = f'MAU MART <{from_email}>'
 
-    if not api_key or not domain:
-        print("⚠️  Mailgun not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN missing)")
+    if not api_key:
+        print("⚠️  Resend not configured (RESEND_API_KEY missing)")
         return False
 
     try:
         import requests
         response = requests.post(
-            f'https://api.mailgun.net/v3/{domain}/messages',
-            auth=('api', api_key),
-            data={
+            'https://api.resend.com/emails',
+            headers={
+                'Authorization': f'Bearer {api_key}',
+                'Content-Type': 'application/json',
+            },
+            json={
                 'from': from_email,
                 'to': [to_email],
                 'subject': subject,
-                'text': text or '',
                 'html': html,
+                'text': text or '',
             },
             timeout=15
         )
-        if response.status_code == 200:
-            print(f"✅ Mailgun: Email sent to {to_email}")
+        if response.status_code in (200, 201):
+            print(f"✅ Resend: Email sent to {to_email}")
             return True
         else:
-            print(f"❌ Mailgun failed ({response.status_code}): {response.text}")
+            print(f"❌ Resend failed ({response.status_code}): {response.text}")
             return False
     except Exception as e:
-        print(f"❌ Mailgun error: {e}")
+        print(f"❌ Resend error: {e}")
         return False
 
 
@@ -155,27 +161,25 @@ def _send_via_smtp(to_email, subject, html, text, config=None):
 def send_email(to_email, subject, html, text=None, smtp_config=None):
     """
     Universal email sender. Checks admin settings for provider preference.
-    provider = 'mailgun' -> uses Mailgun HTTP API
-    provider = 'smtp'    -> uses SMTP (from DB config or env config)
+    provider = 'resend' -> uses Resend HTTP API
+    provider = 'smtp'   -> uses SMTP (from DB config or env config)
     """
     provider = _get_email_provider()
     print(f"📧 Email provider: {provider}")
 
-    if provider == 'mailgun':
-        result = _send_via_mailgun(to_email, subject, html, text)
+    if provider == 'resend':
+        result = _send_via_resend(to_email, subject, html, text)
         if result:
             return True
-        # If Mailgun fails, try SMTP as fallback
-        print("⚠️  Mailgun failed, falling back to SMTP...")
+        print("⚠️  Resend failed, falling back to SMTP...")
         return _send_via_smtp(to_email, subject, html, text, smtp_config)
     else:
         # SMTP mode
         result = _send_via_smtp(to_email, subject, html, text, smtp_config)
         if result:
             return True
-        # If SMTP fails, try Mailgun as fallback
-        print("⚠️  SMTP failed, falling back to Mailgun...")
-        return _send_via_mailgun(to_email, subject, html, text)
+        print("⚠️  SMTP failed, falling back to Resend...")
+        return _send_via_resend(to_email, subject, html, text)
 
 
 def send_otp_email(to_email, otp, purpose='Verification'):

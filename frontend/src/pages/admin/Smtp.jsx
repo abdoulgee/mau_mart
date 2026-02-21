@@ -3,7 +3,7 @@ import api from '../../services/api'
 import useUIStore from '../../store/uiStore'
 
 export default function AdminSmtp() {
-    const [emailProvider, setEmailProvider] = useState('mailgun')
+    const [emailProvider, setEmailProvider] = useState('resend')
     const [config, setConfig] = useState({
         mail_server: '',
         mail_port: 465,
@@ -43,7 +43,8 @@ export default function AdminSmtp() {
             const response = await api.get('/api/v1/admin/settings')
             const settings = response.data.settings || {}
             if (settings.email_provider) {
-                setEmailProvider(settings.email_provider)
+                // Migrate old mailgun setting
+                setEmailProvider(settings.email_provider === 'mailgun' ? 'resend' : settings.email_provider)
             }
         } catch (error) {
             // ignore
@@ -54,11 +55,10 @@ export default function AdminSmtp() {
         setEmailProvider(provider)
         setSavingProvider(true)
         try {
-            // Fetch current settings first, then merge
             const res = await api.get('/api/v1/admin/settings')
             const currentSettings = res.data.settings || {}
             await api.post('/api/v1/admin/settings', { ...currentSettings, email_provider: provider })
-            addToast({ type: 'success', message: `Email provider set to ${provider === 'mailgun' ? 'Mailgun (HTTP)' : 'SMTP'}` })
+            addToast({ type: 'success', message: `Email provider set to ${provider === 'resend' ? 'Resend (HTTP)' : 'SMTP'}` })
         } catch (error) {
             addToast({ type: 'error', message: 'Failed to save email provider' })
         } finally {
@@ -117,20 +117,20 @@ export default function AdminSmtp() {
                 <p className="text-sm text-gray-500 mb-4">Choose how MAU MART sends emails (OTP codes, marketing, notifications)</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <button
-                        onClick={() => handleProviderChange('mailgun')}
+                        onClick={() => handleProviderChange('resend')}
                         disabled={savingProvider}
-                        className={`p-4 rounded-xl border-2 text-left transition-all ${emailProvider === 'mailgun'
+                        className={`p-4 rounded-xl border-2 text-left transition-all ${emailProvider === 'resend'
                                 ? 'border-primary-500 bg-primary-50'
                                 : 'border-gray-200 hover:border-gray-300'
                             }`}
                     >
                         <div className="flex items-center gap-3">
-                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${emailProvider === 'mailgun' ? 'border-primary-500' : 'border-gray-300'
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${emailProvider === 'resend' ? 'border-primary-500' : 'border-gray-300'
                                 }`}>
-                                {emailProvider === 'mailgun' && <div className="w-2 h-2 rounded-full bg-primary-500"></div>}
+                                {emailProvider === 'resend' && <div className="w-2 h-2 rounded-full bg-primary-500"></div>}
                             </div>
                             <div>
-                                <p className="font-semibold text-gray-900">Mailgun (HTTP API)</p>
+                                <p className="font-semibold text-gray-900">Resend (HTTP API)</p>
                                 <p className="text-xs text-gray-500 mt-0.5">Recommended for Render & cloud hosting</p>
                             </div>
                         </div>
@@ -157,22 +157,24 @@ export default function AdminSmtp() {
                 </div>
             </div>
 
-            {/* Mailgun Info (when mailgun selected) */}
-            {emailProvider === 'mailgun' && (
+            {/* Resend Info */}
+            {emailProvider === 'resend' && (
                 <div className="card bg-green-50 border-green-200">
-                    <h3 className="font-semibold text-green-900 mb-2">✅ Mailgun Active</h3>
+                    <h3 className="font-semibold text-green-900 mb-2">✅ Resend Active</h3>
                     <p className="text-sm text-green-800">
-                        Emails are sent via Mailgun HTTP API. Configure your API key and domain in the server environment variables:
+                        Emails are sent via Resend HTTP API. Configure your API key in the server environment variables:
                     </p>
                     <ul className="text-sm text-green-700 list-disc list-inside mt-2 space-y-1">
-                        <li><code>MAILGUN_API_KEY</code> — Your Mailgun API key</li>
-                        <li><code>MAILGUN_DOMAIN</code> — Your sending domain</li>
-                        <li><code>MAILGUN_FROM_EMAIL</code> — Sender email (optional)</li>
+                        <li><code>RESEND_API_KEY</code> — Your Resend API key</li>
+                        <li><code>RESEND_FROM_EMAIL</code> — Sender email (optional, defaults to onboarding@resend.dev)</li>
                     </ul>
+                    <p className="text-xs text-green-600 mt-3">
+                        💡 On free tier, you can only send to your own email. Verify a domain at resend.com/domains to send to anyone.
+                    </p>
                 </div>
             )}
 
-            {/* SMTP Config (always visible, more prominent when smtp selected) */}
+            {/* SMTP Config */}
             <div className={emailProvider === 'smtp' ? '' : 'opacity-60'}>
                 <form onSubmit={handleSave} className="card space-y-6">
                     <h3 className="font-semibold text-gray-900">SMTP Configuration {emailProvider !== 'smtp' && <span className="text-xs text-gray-400">(fallback)</span>}</h3>
@@ -224,7 +226,7 @@ export default function AdminSmtp() {
             <div className="card">
                 <h3 className="font-semibold text-gray-900 mb-4">Send Test Email</h3>
                 <p className="text-sm text-gray-500 mb-3">
-                    Test using the <strong>{emailProvider === 'mailgun' ? 'Mailgun' : 'SMTP'}</strong> provider
+                    Test using the <strong>{emailProvider === 'resend' ? 'Resend' : 'SMTP'}</strong> provider
                 </p>
                 <div className="flex gap-3">
                     <input type="email" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="Enter email to test..." className="input flex-1" />
