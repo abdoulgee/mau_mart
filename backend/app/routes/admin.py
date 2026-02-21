@@ -620,29 +620,24 @@ def save_smtp_config_aligned():
 @bp.route('/smtp-test', methods=['POST'])
 @super_admin_required
 def test_smtp_config():
-    """Test SMTP configuration by sending a test email"""
+    """Test email configuration by sending a test email using the active provider"""
     data = request.get_json()
     test_email = data.get('email')
     
     if not test_email:
         return jsonify({'message': 'Test email address is required'}), 400
-        
-    # In a real scenario, you'd use Flask-Mail or similar here.
-    # For now, we'll simulate a successful send if config exists.
-    config = SmtpConfig.query.filter_by(is_active=True).first()
-    if not config:
-        return jsonify({'message': 'No active SMTP configuration found. Save configuration first.'}), 404
-        
-    # Logic to send test email
-    success = send_smtp_email(
+    
+    from app.services.email import send_email
+    
+    success = send_email(
         to_email=test_email,
-        subject="MAU MART - SMTP Test Email",
-        body=f"This is a test email from MAU MART to verify your SMTP configuration.\n\nServer: {config.server}\nPort: {config.port}\nUsername: {config.username}\n\nIf you received this, your SMTP settings are correct!",
-        config=config
+        subject="MAU MART - Test Email",
+        html="<div style='font-family: sans-serif; padding: 20px;'><h2>✅ Email Configuration Working!</h2><p>This is a test email from MAU MART. If you received this, your email settings are correct!</p></div>",
+        text="MAU MART - Test Email\n\nThis is a test email. If you received this, your email settings are correct!"
     )
     
     if not success:
-        return jsonify({'message': 'Failed to send test email. Please check your credentials and server settings.'}), 500
+        return jsonify({'message': 'Failed to send test email. Check your configuration and server logs.'}), 500
         
     return jsonify({'message': f'Test email sent to {test_email}'}), 200
 
@@ -1144,11 +1139,12 @@ def email_marketing_send():
     failed = 0
     for user in users:
         try:
-            success = send_smtp_email(
+            from app.services.email import send_email
+            success = send_email(
                 to_email=user.email,
                 subject=subject,
-                body=plain_text,
-                html=html_content
+                html=html_content,
+                text=plain_text
             )
             if success:
                 sent += 1

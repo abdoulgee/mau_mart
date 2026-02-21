@@ -196,7 +196,23 @@ def login():
             pass
         
         if require_verification:
-            return jsonify({'message': 'Please verify your email first', 'needs_verification': True}), 403
+            # Auto-send a new OTP so user can verify immediately
+            otp = generate_otp()
+            otp_log = OtpLog(
+                email=user.email,
+                otp_code=otp,
+                purpose='email_verification',
+                expires_at=datetime.utcnow() + timedelta(minutes=10)
+            )
+            db.session.add(otp_log)
+            db.session.commit()
+            send_otp_email(user.email, otp, 'Email Verification')
+            
+            return jsonify({
+                'message': 'Please verify your email first. A new verification code has been sent.',
+                'needs_verification': True,
+                'email': user.email
+            }), 403
     
     if not user.is_active:
         return jsonify({'message': 'Your account has been suspended'}), 403

@@ -3,35 +3,66 @@ import api from '../../services/api'
 import useUIStore from '../../store/uiStore'
 
 export default function AdminSmtp() {
+    const [emailProvider, setEmailProvider] = useState('mailgun')
     const [config, setConfig] = useState({
         mail_server: '',
-        mail_port: 587,
-        mail_use_tls: true,
-        mail_use_ssl: false,
+        mail_port: 465,
+        mail_use_tls: false,
+        mail_use_ssl: true,
         mail_username: '',
         mail_password: '',
         mail_default_sender: '',
     })
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [savingProvider, setSavingProvider] = useState(false)
     const [testing, setTesting] = useState(false)
     const [testEmail, setTestEmail] = useState('')
     const { addToast } = useUIStore()
 
     useEffect(() => {
         fetchConfig()
+        fetchSettings()
     }, [])
 
     const fetchConfig = async () => {
         try {
             const response = await api.get('/api/v1/admin/smtp-config')
             if (response.data.config) {
-                setConfig({ ...config, ...response.data.config })
+                setConfig(prev => ({ ...prev, ...response.data.config }))
             }
         } catch (error) {
             // Config may not exist yet
         } finally {
             setLoading(false)
+        }
+    }
+
+    const fetchSettings = async () => {
+        try {
+            const response = await api.get('/api/v1/admin/settings')
+            const settings = response.data.settings || {}
+            if (settings.email_provider) {
+                setEmailProvider(settings.email_provider)
+            }
+        } catch (error) {
+            // ignore
+        }
+    }
+
+    const handleProviderChange = async (provider) => {
+        setEmailProvider(provider)
+        setSavingProvider(true)
+        try {
+            // Fetch current settings first, then merge
+            const res = await api.get('/api/v1/admin/settings')
+            const currentSettings = res.data.settings || {}
+            await api.post('/api/v1/admin/settings', { ...currentSettings, email_provider: provider })
+            addToast({ type: 'success', message: `Email provider set to ${provider === 'mailgun' ? 'Mailgun (HTTP)' : 'SMTP'}` })
+        } catch (error) {
+            addToast({ type: 'error', message: 'Failed to save email provider' })
+        } finally {
+            setSavingProvider(false)
         }
     }
 
@@ -66,7 +97,7 @@ export default function AdminSmtp() {
             await api.post('/api/v1/admin/smtp-test', { email: testEmail })
             addToast({ type: 'success', message: 'Test email sent! Check your inbox.' })
         } catch (error) {
-            addToast({ type: 'error', message: 'Failed to send test email. Check your configuration.' })
+            addToast({ type: 'error', message: error.response?.data?.message || 'Failed to send test email.' })
         } finally {
             setTesting(false)
         }
@@ -78,74 +109,129 @@ export default function AdminSmtp() {
 
     return (
         <div className="p-6 space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900">SMTP Configuration</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Email Configuration</h1>
 
-            <form onSubmit={handleSave} className="card space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Mail Server *</label>
-                        <input type="text" name="mail_server" value={config.mail_server} onChange={handleChange} placeholder="smtp.gmail.com" className="input" required />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Port *</label>
-                        <input type="number" name="mail_port" value={config.mail_port} onChange={handleChange} className="input" required />
-                    </div>
+            {/* Email Provider Toggle */}
+            <div className="card">
+                <h3 className="font-semibold text-gray-900 mb-3">Email Provider</h3>
+                <p className="text-sm text-gray-500 mb-4">Choose how MAU MART sends emails (OTP codes, marketing, notifications)</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <button
+                        onClick={() => handleProviderChange('mailgun')}
+                        disabled={savingProvider}
+                        className={`p-4 rounded-xl border-2 text-left transition-all ${emailProvider === 'mailgun'
+                                ? 'border-primary-500 bg-primary-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${emailProvider === 'mailgun' ? 'border-primary-500' : 'border-gray-300'
+                                }`}>
+                                {emailProvider === 'mailgun' && <div className="w-2 h-2 rounded-full bg-primary-500"></div>}
+                            </div>
+                            <div>
+                                <p className="font-semibold text-gray-900">Mailgun (HTTP API)</p>
+                                <p className="text-xs text-gray-500 mt-0.5">Recommended for Render & cloud hosting</p>
+                            </div>
+                        </div>
+                    </button>
+                    <button
+                        onClick={() => handleProviderChange('smtp')}
+                        disabled={savingProvider}
+                        className={`p-4 rounded-xl border-2 text-left transition-all ${emailProvider === 'smtp'
+                                ? 'border-primary-500 bg-primary-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                    >
+                        <div className="flex items-center gap-3">
+                            <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${emailProvider === 'smtp' ? 'border-primary-500' : 'border-gray-300'
+                                }`}>
+                                {emailProvider === 'smtp' && <div className="w-2 h-2 rounded-full bg-primary-500"></div>}
+                            </div>
+                            <div>
+                                <p className="font-semibold text-gray-900">SMTP (Direct)</p>
+                                <p className="text-xs text-gray-500 mt-0.5">For VPS / servers with open SMTP ports</p>
+                            </div>
+                        </div>
+                    </button>
                 </div>
+            </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
-                        <input type="email" name="mail_username" value={config.mail_username} onChange={handleChange} placeholder="your@email.com" className="input" required />
+            {/* Mailgun Info (when mailgun selected) */}
+            {emailProvider === 'mailgun' && (
+                <div className="card bg-green-50 border-green-200">
+                    <h3 className="font-semibold text-green-900 mb-2">✅ Mailgun Active</h3>
+                    <p className="text-sm text-green-800">
+                        Emails are sent via Mailgun HTTP API. Configure your API key and domain in the server environment variables:
+                    </p>
+                    <ul className="text-sm text-green-700 list-disc list-inside mt-2 space-y-1">
+                        <li><code>MAILGUN_API_KEY</code> — Your Mailgun API key</li>
+                        <li><code>MAILGUN_DOMAIN</code> — Your sending domain</li>
+                        <li><code>MAILGUN_FROM_EMAIL</code> — Sender email (optional)</li>
+                    </ul>
+                </div>
+            )}
+
+            {/* SMTP Config (always visible, more prominent when smtp selected) */}
+            <div className={emailProvider === 'smtp' ? '' : 'opacity-60'}>
+                <form onSubmit={handleSave} className="card space-y-6">
+                    <h3 className="font-semibold text-gray-900">SMTP Configuration {emailProvider !== 'smtp' && <span className="text-xs text-gray-400">(fallback)</span>}</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Mail Server *</label>
+                            <input type="text" name="mail_server" value={config.mail_server} onChange={handleChange} placeholder="mail.yourdomain.com" className="input" required />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Port *</label>
+                            <input type="number" name="mail_port" value={config.mail_port} onChange={handleChange} className="input" required />
+                        </div>
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
-                        <input type="password" name="mail_password" value={config.mail_password} onChange={handleChange} placeholder="App password" className="input" required />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Username *</label>
+                            <input type="email" name="mail_username" value={config.mail_username} onChange={handleChange} placeholder="your@email.com" className="input" required />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Password *</label>
+                            <input type="password" name="mail_password" value={config.mail_password} onChange={handleChange} placeholder="App password" className="input" required />
+                        </div>
                     </div>
-                </div>
 
-                <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Default Sender</label>
-                    <input type="text" name="mail_default_sender" value={config.mail_default_sender} onChange={handleChange} placeholder="MAU MART <noreply@maumart.com>" className="input" />
-                </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Default Sender</label>
+                        <input type="text" name="mail_default_sender" value={config.mail_default_sender} onChange={handleChange} placeholder="MAU MART <noreply@yourdomain.com>" className="input" />
+                    </div>
 
-                <div className="flex items-center gap-6">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" name="mail_use_tls" checked={config.mail_use_tls} onChange={handleChange} className="w-4 h-4 rounded text-primary-600" />
-                        <span className="text-sm text-gray-700">Use TLS</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" name="mail_use_ssl" checked={config.mail_use_ssl} onChange={handleChange} className="w-4 h-4 rounded text-primary-600" />
-                        <span className="text-sm text-gray-700">Use SSL</span>
-                    </label>
-                </div>
+                    <div className="flex items-center gap-6">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="mail_use_tls" checked={config.mail_use_tls} onChange={handleChange} className="w-4 h-4 rounded text-primary-600" />
+                            <span className="text-sm text-gray-700">Use TLS</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="mail_use_ssl" checked={config.mail_use_ssl} onChange={handleChange} className="w-4 h-4 rounded text-primary-600" />
+                            <span className="text-sm text-gray-700">Use SSL</span>
+                        </label>
+                    </div>
 
-                <button type="submit" disabled={saving} className="btn-primary disabled:opacity-50">
-                    {saving ? 'Saving...' : 'Save Configuration'}
-                </button>
-            </form>
+                    <button type="submit" disabled={saving} className="btn-primary disabled:opacity-50">
+                        {saving ? 'Saving...' : 'Save SMTP Configuration'}
+                    </button>
+                </form>
+            </div>
 
             {/* Test Email */}
             <div className="card">
-                <h3 className="font-semibold text-gray-900 mb-4">Test Configuration</h3>
+                <h3 className="font-semibold text-gray-900 mb-4">Send Test Email</h3>
+                <p className="text-sm text-gray-500 mb-3">
+                    Test using the <strong>{emailProvider === 'mailgun' ? 'Mailgun' : 'SMTP'}</strong> provider
+                </p>
                 <div className="flex gap-3">
                     <input type="email" value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="Enter email to test..." className="input flex-1" />
                     <button onClick={handleTest} disabled={testing} className="btn-secondary disabled:opacity-50">
                         {testing ? 'Sending...' : 'Send Test'}
                     </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-2">Save the configuration first, then send a test email to verify it works.</p>
-            </div>
-
-            {/* Help */}
-            <div className="card bg-blue-50 border-blue-200">
-                <h3 className="font-semibold text-blue-900 mb-2">💡 Gmail Users</h3>
-                <p className="text-sm text-blue-800 mb-2">For Gmail, use these settings:</p>
-                <ul className="text-sm text-blue-700 list-disc list-inside space-y-1">
-                    <li>Server: smtp.gmail.com</li>
-                    <li>Port: 587 (TLS) or 465 (SSL)</li>
-                    <li>Use an App Password (not your regular password)</li>
-                    <li>Enable 2FA and generate an App Password in Google Account settings</li>
-                </ul>
             </div>
         </div>
     )

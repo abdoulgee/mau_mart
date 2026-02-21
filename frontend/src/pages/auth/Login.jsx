@@ -31,38 +31,26 @@ export default function Login() {
             toast.success('Welcome back!')
 
             // Ensure token is set in API client before navigating
-            // This prevents race condition where dashboard loads before token is available
             const state = useAuthStore.getState()
-            console.log('Login successful! State:', {
-                hasAccessToken: !!state.accessToken,
-                accessTokenPreview: state.accessToken?.substring(0, 30) + '...',
-                hasRefreshToken: !!state.refreshToken,
-                isAuthenticated: state.isAuthenticated,
-                userRole: result.user?.role
-            })
 
             if (state.accessToken) {
                 api.setAuthToken(state.accessToken)
-                console.log('Token set in API client:', api.authToken?.substring(0, 30) + '...')
-            } else {
-                console.error('No access token available after login!')
             }
 
             // Small delay to ensure token is properly set
             await new Promise(resolve => setTimeout(resolve, 100))
 
-            // Verify token is still set after delay
-            console.log('After delay - API token:', api.authToken?.substring(0, 30) + '...')
-
             // Navigate based on role
             if (result.user.role === 'admin' || result.user.role === 'super_admin') {
-                console.log('Navigating to admin dashboard...')
                 navigate('/admin/dashboard')
             } else if (result.user.is_seller) {
-                navigate('/seller')  // Fixed: actual route is /seller, not /seller/dashboard
+                navigate('/seller')
             } else {
                 navigate(from)
             }
+        } else if (result.needsVerification) {
+            toast.success('Please verify your email. A new code has been sent!')
+            navigate('/verify-otp')
         } else {
             toast.error(result.error)
         }

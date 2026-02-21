@@ -52,6 +52,15 @@ const useAuthStore = create(
                     return { success: true, user }
                 } catch (error) {
                     const message = error.response?.data?.message || 'Login failed'
+                    const needsVerification = error.response?.data?.needs_verification
+                    // Use email from response, or fall back to the login credential
+                    const email = error.response?.data?.email || credentials.email
+
+                    if (needsVerification) {
+                        set({ pendingVerificationEmail: email, isLoading: false })
+                        return { success: false, needsVerification: true, email, error: message }
+                    }
+
                     set({ error: message, isLoading: false })
                     return { success: false, error: message }
                 } finally {

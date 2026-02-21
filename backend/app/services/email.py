@@ -3,43 +3,19 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import current_app
 import traceback
-import socket
 import os
 
 
-def _send_via_resend(to_email, subject, html, text=None):
-    """Send email via Resend HTTP API. Returns True on success."""
-    api_key = os.getenv('RESEND_API_KEY')
-    from_email = os.getenv('RESEND_FROM_EMAIL', 'MAU MART <onboarding@resend.dev>')
-    if not api_key:
-        return None  # Not configured, skip
-    
+def _get_email_provider():
+    """Get the configured email provider from AppSettings. Returns 'mailgun' or 'smtp'."""
     try:
-        import requests
-        response = requests.post(
-            'https://api.resend.com/emails',
-            headers={
-                'Authorization': f'Bearer {api_key}',
-                'Content-Type': 'application/json',
-            },
-            json={
-                'from': from_email,
-                'to': [to_email],
-                'subject': subject,
-                'html': html,
-                'text': text or '',
-            },
-            timeout=15
-        )
-        if response.status_code in (200, 201):
-            print(f"✅ Resend: Email sent to {to_email}")
-            return True
-        else:
-            print(f"❌ Resend failed ({response.status_code}): {response.text}")
-            return False
-    except Exception as e:
-        print(f"❌ Resend error: {e}")
-        return False
+        from app.models import AppSettings
+        row = AppSettings.query.first()
+        if row and row.data:
+            return row.data.get('email_provider', 'mailgun')
+    except Exception:
+        pass
+    return 'mailgun'  # Default to mailgun
 
 
 def _build_otp_html(otp, purpose):
@@ -75,66 +51,149 @@ def _build_otp_html(otp, purpose):
     """
 
 
+def _send_via_mailgun(to_email, subject, html, text=None):
+    """Send email via Mailgun HTTP API."""
+    api_key = os.getenv('MAILGUN_API_KEY')
+    domain = os.getenv('MAILGUN_DOMAIN')
+    from_email = os.getenv('MAILGUN_FROM_EMAIL', f'noreply@{domain}' if domain else '')
+    # Wrap plain email in display name
+    if from_email and '@' in from_email and '<' not in from_email:
+        from_email = f'MAU MART <{from_email}>'
+
+    if not api_key or not domain:
+        print("⚠️  Mailgun not configured (MAILGUN_API_KEY / MAILGUN_DOMAIN missing)")
+        return False
+
+    try:
+        import requests
+        response = requests.post(
+            f'https://api.mailgun.net/v3/{domain}/messages',
+            auth=('api', api_key),
+            data={
+                'from': from_email,
+                'to': [to_email],
+                'subject': subject,
+                'text': text or '',
+                'html': html,
+            },
+            timeout=15
+        )
+        if response.status_code == 200:
+            print(f"✅ Mailgun: Email sent to {to_email}")
+            return True
+        else:
+            print(f"❌ Mailgun failed ({response.status_code}): {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Mailgun error: {e}")
+        return False
+
+
+def _send_via_smtp(to_email, subject, html, text, config=None):
+    """Send email via SMTP. Uses provided config or falls back to env/app config."""
+    try:
+        if config:
+            from app.models import SmtpConfig
+            if isinstance(config, SmtpConfig):
+                server_host = config.server
+                server_port = config.port
+                username = config.username
+                password = config.password
+                use_tls = config.use_tls
+                from_email = config.from_email
+                from_name = config.from_name
+            else:
+                server_host = config.get('server')
+                server_port = config.get('port', 465)
+                username = config.get('username')
+                password = config.get('password')
+                use_tls = config.get('use_tls', False)
+                from_email = config.get('from_email')
+                from_name = config.get('from_name', '')
+            sender = f"{from_name} <{from_email}>" if from_name else from_email
+        else:
+            server_host = current_app.config.get('MAIL_SERVER')
+            username = current_app.config.get('MAIL_USERNAME')
+            password = current_app.config.get('MAIL_PASSWORD')
+            server_port = current_app.config.get('MAIL_PORT', 465)
+            use_tls = current_app.config.get('MAIL_USE_TLS', False)
+            sender = current_app.config.get('MAIL_DEFAULT_SENDER', username)
+
+            if not server_host or not username or not password:
+                print("⚠️  SMTP not configured.")
+                return False
+
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From'] = sender
+        msg['To'] = to_email
+        msg.attach(MIMEText(text or '', 'plain'))
+        msg.attach(MIMEText(html, 'html'))
+
+        is_ssl = int(server_port) == 465
+        print(f"🚀 SMTP: {server_host}:{server_port} (SSL: {is_ssl})")
+
+        if is_ssl:
+            with smtplib.SMTP_SSL(server_host, int(server_port), timeout=15) as server:
+                server.login(username, password)
+                server.sendmail(sender, to_email, msg.as_string())
+        else:
+            with smtplib.SMTP(server_host, int(server_port), timeout=15) as server:
+                if use_tls:
+                    server.starttls()
+                server.login(username, password)
+                server.sendmail(sender, to_email, msg.as_string())
+
+        print(f"✅ Email sent via SMTP to {to_email}")
+        return True
+
+    except Exception as e:
+        print(f"❌ SMTP failed: {type(e).__name__}: {e}")
+        return False
+
+
+def send_email(to_email, subject, html, text=None, smtp_config=None):
+    """
+    Universal email sender. Checks admin settings for provider preference.
+    provider = 'mailgun' -> uses Mailgun HTTP API
+    provider = 'smtp'    -> uses SMTP (from DB config or env config)
+    """
+    provider = _get_email_provider()
+    print(f"📧 Email provider: {provider}")
+
+    if provider == 'mailgun':
+        result = _send_via_mailgun(to_email, subject, html, text)
+        if result:
+            return True
+        # If Mailgun fails, try SMTP as fallback
+        print("⚠️  Mailgun failed, falling back to SMTP...")
+        return _send_via_smtp(to_email, subject, html, text, smtp_config)
+    else:
+        # SMTP mode
+        result = _send_via_smtp(to_email, subject, html, text, smtp_config)
+        if result:
+            return True
+        # If SMTP fails, try Mailgun as fallback
+        print("⚠️  SMTP failed, falling back to Mailgun...")
+        return _send_via_mailgun(to_email, subject, html, text)
+
+
 def send_otp_email(to_email, otp, purpose='Verification'):
-    """Send OTP email. Tries: Resend HTTP API -> SMTP -> Console only."""
-    
-    # Always print to console
+    """Send OTP email using the configured provider."""
     print("\n" + "="*50)
     print(f"📧 OTP EMAIL TO: {to_email}")
     print(f"📌 PURPOSE: {purpose}")
     print(f"🔐 OTP CODE: {otp}")
     print("="*50 + "\n")
-    
+
     subject = f'{purpose} - Your OTP Code'
     html = _build_otp_html(otp, purpose)
     text = f"{purpose}\n\nYour OTP code is: {otp}\n\nThis code expires in 10 minutes."
-    
-    # 1. Try Resend HTTP API first (works on Render)
-    result = _send_via_resend(to_email, subject, html, text)
-    if result is True:
-        return True
-    if result is None:
-        print("ℹ️  Resend not configured, trying SMTP...")
-    
-    # 2. Try SMTP
-    try:
-        mail_server = current_app.config.get('MAIL_SERVER')
-        mail_username = current_app.config.get('MAIL_USERNAME')
-        mail_password = current_app.config.get('MAIL_PASSWORD')
-        mail_port = current_app.config.get('MAIL_PORT', 587)
-        mail_use_tls = current_app.config.get('MAIL_USE_TLS', True)
-        
-        if not mail_username or not mail_password:
-            print("⚠️  SMTP not configured. OTP printed to console only.")
-            return True
-        
-        sender = current_app.config.get('MAIL_DEFAULT_SENDER', mail_username)
-        
-        msg = MIMEMultipart('alternative')
-        msg['Subject'] = subject
-        msg['From'] = sender
-        msg['To'] = to_email
-        msg.attach(MIMEText(text, 'plain'))
-        msg.attach(MIMEText(html, 'html'))
-        
-        if int(mail_port) == 465:
-            with smtplib.SMTP_SSL(mail_server, mail_port, timeout=10) as server:
-                server.login(mail_username, mail_password)
-                server.sendmail(sender, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(mail_server, mail_port, timeout=10) as server:
-                if mail_use_tls:
-                    server.starttls()
-                server.login(mail_username, mail_password)
-                server.sendmail(sender, to_email, msg.as_string())
-        
-        print("✅ Email sent via SMTP!")
-        return True
-        
-    except Exception as e:
-        print(f"❌ SMTP failed: {type(e).__name__}: {e}")
+
+    result = send_email(to_email, subject, html, text)
+    if not result:
         print("   OTP has been printed to console above.")
-        return False
+    return result
 
 
 def send_receipt_email(to_email, order, receipt_url):
@@ -144,8 +203,6 @@ def send_receipt_email(to_email, order, receipt_url):
     print(f"📦 ORDER: #{order.order_number}")
     print(f"📄 RECEIPT: {receipt_url}")
     print("="*50 + "\n")
-    
-    # Similar implementation as above for actual email sending
     return True
 
 
@@ -156,85 +213,21 @@ def send_notification_email(to_email, subject, message):
     print(f"📌 SUBJECT: {subject}")
     print(f"📝 MESSAGE: {message}")
     print("="*50 + "\n")
-    
     return True
 
 
 def send_smtp_email(to_email, subject, body, config=None, html=None):
     """
-    Send email using Resend HTTP API (preferred) or SMTP config.
-    Tries Resend first since Render blocks SMTP ports.
+    Send email using the configured provider.
+    Used by email marketing and SMTP test features.
+    smtp_config from DB is passed to SMTP if SMTP is the active provider.
     """
-    # 1. Try Resend HTTP API first (works on Render)
-    result = _send_via_resend(to_email, subject, html or f"<p>{body}</p>", body)
-    if result is True:
-        return True
-    if result is not None:
-        print("⚠️ Resend failed, trying SMTP...")
-    
-    # 2. Fall back to SMTP
-    from app.models import SmtpConfig
-    
+    if not html:
+        html = f"<div style='font-family: sans-serif;'>{body}</div>"
+
+    # For SMTP test, we load config from DB
     if not config:
+        from app.models import SmtpConfig
         config = SmtpConfig.query.filter_by(is_active=True).first()
-        
-    if not config:
-        print("⚠️  No active SMTP configuration found.")
-        return False
-        
-    # Extract config values
-    if isinstance(config, SmtpConfig):
-        server_host = config.server
-        server_port = config.port
-        username = config.username
-        password = config.password
-        use_tls = config.use_tls
-        from_email = config.from_email
-        from_name = config.from_name
-    else:
-        server_host = config.get('server')
-        server_port = config.get('port', 587)
-        username = config.get('username')
-        password = config.get('password')
-        use_tls = config.get('use_tls', True)
-        from_email = config.get('from_email')
-        from_name = config.get('from_name', '')
 
-    sender = f"{from_name} <{from_email}>" if from_name else from_email
-    
-    try:
-        if html:
-            msg = MIMEMultipart('alternative')
-            msg['Subject'] = subject
-            msg['From'] = sender
-            msg['To'] = to_email
-            msg.attach(MIMEText(body, 'plain'))
-            msg.attach(MIMEText(html, 'html'))
-        else:
-            msg = MIMEMultipart()
-            msg['Subject'] = subject
-            msg['From'] = sender
-            msg['To'] = to_email
-            msg.attach(MIMEText(body, 'plain'))
-        
-        is_port_465 = int(server_port) == 465
-        print(f"🚀 SMTP: {server_host}:{server_port} (SSL: {is_port_465})")
-        
-        if is_port_465:
-            with smtplib.SMTP_SSL(server_host, server_port, timeout=15) as server:
-                server.login(username, password)
-                server.sendmail(from_email, to_email, msg.as_string())
-        else:
-            with smtplib.SMTP(server_host, server_port, timeout=15) as server:
-                if use_tls:
-                    server.starttls()
-                server.login(username, password)
-                server.sendmail(from_email, to_email, msg.as_string())
-            
-        print(f"✅ Email sent via SMTP to {to_email}")
-        return True
-    except Exception as e:
-        print(f"❌ SMTP failed: {type(e).__name__}: {e}")
-        return False
-
-
+    return send_email(to_email, subject, html, body, smtp_config=config)
