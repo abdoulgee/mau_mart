@@ -51,10 +51,22 @@ def upload_file(file_data, filename, bucket='uploads', folder=''):
             except Exception:
                 client.storage.create_bucket(bucket, options={"public": True})
 
+            # Convert FileStorage to bytes if needed
+            if hasattr(file_data, 'read'):
+                file_bytes = file_data.read()
+                # Reset stream position for potential local fallback
+                file_data.seek(0)
+            else:
+                file_bytes = file_data
+
+            # Detect content type
+            import mimetypes
+            content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+
             result = client.storage.from_(bucket).upload(
                 path,
-                file_data,
-                file_options={"content-type": "application/octet-stream", "upsert": "true"}
+                file_bytes,
+                file_options={"content-type": content_type, "upsert": "true"}
             )
             # Return public URL
             public_url = client.storage.from_(bucket).get_public_url(path)
