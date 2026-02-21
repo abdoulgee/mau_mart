@@ -13,13 +13,24 @@ def _get_supabase_client():
     url = os.getenv('SUPABASE_URL')
     # Prefer service_role key for server-side uploads (bypasses RLS)
     key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY')
-    if not url or not key or key == 'YOUR_SUPABASE_SERVICE_ROLE_KEY_HERE':
+    
+    if not url or not key:
+        print("⚠️  Supabase not configured (SUPABASE_URL or key missing) — using local storage")
         return None
+    
+    # Supabase keys are JWT tokens, typically 100+ chars
+    if len(key) < 50 or key.startswith('YOUR_'):
+        print(f"⚠️  Supabase key looks invalid (length={len(key)}) — using local storage")
+        print("💡 Set SUPABASE_SERVICE_ROLE_KEY from Supabase Dashboard → Settings → API")
+        return None
+    
     try:
         from supabase import create_client
-        return create_client(url, key)
+        client = create_client(url, key)
+        print(f"✅ Supabase client created (URL: {url[:40]}...)")
+        return client
     except Exception as e:
-        print(f"Warning: Could not create Supabase client: {e}")
+        print(f"❌ Could not create Supabase client: {e}")
         return None
 
 
