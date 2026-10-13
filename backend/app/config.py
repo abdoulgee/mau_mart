@@ -1,4 +1,5 @@
 import os
+import re
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -9,9 +10,10 @@ class Config:
     SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
     
     # Database
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        'DATABASE_URL', 
-        'postgresql://postgres:postgres@localhost:5432/maumart_db'
+    # Name the psycopg2 driver explicitly: SQLAlchemy 2.1 defaults "postgresql://" to psycopg 3
+    SQLALCHEMY_DATABASE_URI = re.sub(
+        r'^postgres(ql)?://', 'postgresql+psycopg2://',
+        os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/maumart_db'),
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
@@ -46,7 +48,7 @@ class Config:
     OTP_MAX_ATTEMPTS = 5
 
     # Real-time
-    SOCKETIO_ASYNC_MODE = os.getenv('SOCKETIO_ASYNC_MODE', 'eventlet')
+    SOCKETIO_ASYNC_MODE = os.getenv('SOCKETIO_ASYNC_MODE', 'threading')
     
     # App settings
     APP_NAME = 'MAU MART'

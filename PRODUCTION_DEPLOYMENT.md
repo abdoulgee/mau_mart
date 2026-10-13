@@ -18,7 +18,7 @@ Tables are created by migrations (`flask db upgrade`), not on app start.
    - **Root Directory:** `backend`
    - **Environment:** Python (version from `backend/.python-version`)
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `flask --app run db upgrade && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT run:app`
+   - **Start Command:** `flask --app run db upgrade && gunicorn -w 1 --threads 100 --bind 0.0.0.0:$PORT run:app`
 
    Or use **New +** > **Blueprint**: `render.yaml` in the repository root sets all of this up.
 3. Environment variables:
@@ -34,7 +34,7 @@ Tables are created by migrations (`flask db upgrade`), not on app start.
 
 4. Deploy. The start command applies migrations, then starts the server.
 
-Keep `-w 1`: live chat keeps connection state in memory, so it needs a single worker.
+Keep `-w 1`: live chat keeps connection state in memory, so it needs a single worker. `--threads` sets how many connections that worker handles at once.
 
 ## 3. Frontend (Vercel)
 

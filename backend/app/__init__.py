@@ -34,7 +34,7 @@ def create_app(config_name=None):
     socketio.init_app(
         app,
         cors_allowed_origins=allowed_origins,
-        async_mode=app.config.get('SOCKETIO_ASYNC_MODE', 'eventlet'),
+        async_mode=app.config.get('SOCKETIO_ASYNC_MODE', 'threading'),
         manage_session=False,
     )
 
