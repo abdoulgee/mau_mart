@@ -29,7 +29,7 @@ WhatsApp numbers are only shown to logged-in users.
 - **Frontend:** React 18 + Vite, Tailwind CSS, Zustand, Socket.IO client, PWA
 - **Backend:** Flask, SQLAlchemy + Flask-Migrate, Flask-JWT-Extended, Flask-SocketIO
 - **Database:** PostgreSQL (SQLite for tests)
-- **Storage:** Supabase Storage, with local disk as a fallback
+- **Storage:** uploaded images are stored in PostgreSQL (`stored_files` table)
 - **Email:** Resend or SMTP (codes are also printed to the server console)
 
 ## Getting started

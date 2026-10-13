@@ -1,15 +1,16 @@
-from flask import Blueprint, request, jsonify, send_from_directory, current_app, abort
+from flask import Blueprint, Response, request, jsonify, send_from_directory, current_app, abort
 from flask_jwt_extended import jwt_required
 from werkzeug.utils import secure_filename
 from datetime import datetime
 import os
 
+from app import db
+from app.models import StoredFile
 from app.services.storage import upload_file
 from app.utils import current_user_id, allowed_image, super_admin_required
 
 bp = Blueprint('uploads', __name__)
 
-# Folders served from local disk when Supabase storage isn't configured
 SERVED_FOLDERS = {'products', 'chat', 'users', 'ads', 'site'}
 
 
@@ -17,6 +18,12 @@ SERVED_FOLDERS = {'products', 'chat', 'users', 'ads', 'site'}
 def serve_media(folder, filename):
     if folder not in SERVED_FOLDERS:
         abort(404)
+    stored = StoredFile.query.filter_by(path=f'{folder}/{filename}').first()
+    if stored:
+        # Filenames are unique per upload, so browsers can cache them for good
+        return Response(stored.data, mimetype=stored.content_type,
+                        headers={'Cache-Control': 'public, max-age=31536000, immutable'})
+    # Files saved to disk before uploads moved into the database
     return send_from_directory(os.path.join(current_app.config['UPLOAD_FOLDER'], folder), filename)
 
 
@@ -28,7 +35,9 @@ def _upload(folder, prefix):
         return jsonify({'message': 'Only image files are allowed'}), 400
 
     filename = f"{prefix}_{int(datetime.utcnow().timestamp() * 1000)}_{secure_filename(file.filename)}"
-    return jsonify({'url': upload_file(file, filename, folder=folder)}), 201
+    url = upload_file(file, filename, folder=folder)
+    db.session.commit()
+    return jsonify({'url': url}), 201
 
 
 @bp.route('/chat', methods=['POST'])

@@ -1,0 +1,27 @@
+# Render blueprint for the API (the frontend is deployed on Vercel).
+# Render dashboard → New → Blueprint → pick this repo. Values marked sync: false are asked for on first deploy.
+# Python version comes from backend/.python-version.
+services:
+  - type: web
+    name: maumart-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: flask --app run db upgrade && gunicorn --worker-class eventlet -w 1 --bind 0.0.0.0:$PORT run:app
+    healthCheckPath: /api/health
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL          # Neon direct (non-pooled) connection string
+        sync: false
+      - key: FRONTEND_URL          # your Vercel URL, e.g. https://maumart.vercel.app
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false

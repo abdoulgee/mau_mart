@@ -27,12 +27,9 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     jwt.init_app(app)
 
-    frontend_url = app.config.get('FRONTEND_URL', 'http://localhost:5173')
-    allowed_origins = list({
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        frontend_url,
-    })
+    # FRONTEND_URL may list several origins separated by commas (e.g. a Vercel URL and a custom domain)
+    frontend_urls = [u.strip().rstrip('/') for u in app.config.get('FRONTEND_URL', '').split(',') if u.strip()]
+    allowed_origins = list({"http://localhost:5173", "http://127.0.0.1:5173", *frontend_urls})
     CORS(app, resources={r"/api/*": {"origins": allowed_origins, "supports_credentials": True}})
     socketio.init_app(
         app,
@@ -79,6 +76,31 @@ def create_app(config_name=None):
                 added += 1
         db.session.commit()
         print(f'Seeded {added} categories')
+
+    @app.cli.command('import-uploads')
+    def import_uploads_command():
+        """Copy images saved in app/uploads/ on disk into the database (skips ones already there)."""
+        import mimetypes
+        from .models import StoredFile
+        from .routes.uploads import SERVED_FOLDERS
+        root = app.config['UPLOAD_FOLDER']
+        added = 0
+        for folder in sorted(SERVED_FOLDERS):
+            directory = os.path.join(root, folder)
+            if not os.path.isdir(directory):
+                continue
+            for filename in sorted(os.listdir(directory)):
+                path = f'{folder}/{filename}'
+                if StoredFile.query.filter_by(path=path).first():
+                    continue
+                with open(os.path.join(directory, filename), 'rb') as f:
+                    data = f.read()
+                db.session.add(StoredFile(path=path, data=data, size=len(data),
+                                          content_type=mimetypes.guess_type(filename)[0] or 'application/octet-stream'))
+                db.session.commit()
+                added += 1
+                print(f'  {path}')
+        print(f'Imported {added} files')
 
     @jwt.expired_token_loader
     def expired_token_callback(jwt_header, jwt_payload):

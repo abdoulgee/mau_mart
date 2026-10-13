@@ -342,6 +342,18 @@ class AppSettings(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class StoredFile(db.Model):
+    """Uploaded images, kept in the database instead of on disk"""
+    __tablename__ = 'stored_files'
+
+    id = db.Column(db.Integer, primary_key=True)
+    path = db.Column(db.String(300), unique=True, nullable=False, index=True)  # e.g. products/1_123_photo.jpg
+    content_type = db.Column(db.String(100), nullable=False)
+    data = db.Column(db.LargeBinary, nullable=False)
+    size = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
 def get_setting(key, default=None):
     """Read one value from the AppSettings row"""
     row = AppSettings.query.first()

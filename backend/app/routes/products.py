@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 
 from app import db
 from app.models import Product, ProductMedia, Category, User, AdsBanner, ProductCondition
-from app.services.storage import upload_file
+from app.services.storage import upload_file, delete_file
 from app.utils import current_user_id, optional_user_id, page_args, pagination_meta, allowed_image
 
 bp = Blueprint('products', __name__)
@@ -297,6 +297,7 @@ def delete_product_image(product_id, media_id):
     if len(product.media) <= 1:
         return jsonify({'message': 'A listing needs at least one photo'}), 400
 
+    delete_file(media.url)
     db.session.delete(media)
     db.session.commit()
     return jsonify({'message': 'Photo removed'}), 200

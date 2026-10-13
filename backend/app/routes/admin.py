@@ -8,7 +8,7 @@ from app import db
 from app.models import (
     User, UserRole, Product, Category, Chat, Report, AdsBanner, SmtpConfig, AppSettings,
 )
-from app.services.storage import upload_file
+from app.services.storage import upload_file, delete_file
 from app.utils import (
     admin_required, super_admin_required, current_user_id, page_args, pagination_meta,
     create_notification, allowed_image, normalize_whatsapp,
@@ -519,6 +519,7 @@ def delete_ad(ad_id):
     ad = db.session.get(AdsBanner, ad_id)
     if not ad:
         return jsonify({'message': 'Banner not found'}), 404
+    delete_file(ad.image_url)
     db.session.delete(ad)
     db.session.commit()
     return jsonify({'message': 'Banner deleted'}), 200

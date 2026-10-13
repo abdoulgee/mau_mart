@@ -2,7 +2,7 @@ import { API_URL } from '../config'
 
 /**
  * Ensures a media URL is absolute.
- * Supabase URLs are already absolute; local uploads (/api/v1/uploads/...) get the API origin.
+ * Absolute URLs are used as-is; uploads (/api/v1/uploads/...) get the API origin.
  */
 export const getImageUrl = (url) => {
     if (!url) return null

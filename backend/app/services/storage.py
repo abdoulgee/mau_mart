@@ -1,107 +1,31 @@
+"""File uploads, stored in the database so they survive redeploys on hosts with no persistent disk.
+
+Files are served from /api/v1/uploads/<folder>/<filename> (see routes/uploads.py). Older files that
+were saved to app/uploads/ on disk are still served from there.
 """
-Supabase Storage helper for file uploads.
-Falls back to local file storage if Supabase is not configured.
-"""
-import os
-from flask import current_app
+import mimetypes
+
+from app import db
+from app.models import StoredFile
 
 
-def _get_supabase_client():
-    """Get Supabase client if configured, else return None.
-    Prefers SUPABASE_SERVICE_ROLE_KEY (bypasses RLS) over SUPABASE_KEY (anon).
-    """
-    url = os.getenv('SUPABASE_URL')
-    # Prefer service_role key for server-side uploads (bypasses RLS)
-    key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY')
-    
-    if not url or not key:
-        print("⚠️  Supabase not configured (SUPABASE_URL or key missing) — using local storage")
-        return None
-    
-    # Supabase keys are JWT tokens, typically 100+ chars
-    if len(key) < 50 or key.startswith('YOUR_'):
-        print(f"⚠️  Supabase key looks invalid (length={len(key)}) — using local storage")
-        print("💡 Set SUPABASE_SERVICE_ROLE_KEY from Supabase Dashboard → Settings → API")
-        return None
-    
-    try:
-        from supabase import create_client
-        client = create_client(url, key)
-        print(f"✅ Supabase client created (URL: {url[:40]}...)")
-        return client
-    except Exception as e:
-        print(f"❌ Could not create Supabase client: {e}")
-        return None
+def upload_file(file_data, filename, folder=''):
+    """Store an uploaded file and return its URL path. The caller commits the session."""
+    data = file_data.read() if hasattr(file_data, 'read') else file_data
+    path = f'{folder}/{filename}' if folder else filename
+
+    StoredFile.query.filter_by(path=path).delete()
+    db.session.add(StoredFile(
+        path=path,
+        content_type=mimetypes.guess_type(filename)[0] or 'application/octet-stream',
+        data=data,
+        size=len(data),
+    ))
+    return f'/api/v1/uploads/{path}'
 
 
-def upload_file(file_data, filename, bucket='uploads', folder=''):
-    """
-    Upload a file either to Supabase Storage or locally.
-    Returns the public URL of the uploaded file.
-    """
-    client = _get_supabase_client()
-    path = f"{folder}/{filename}" if folder else filename
-
-    if client:
-        # Upload to Supabase Storage
-        try:
-            # Ensure bucket exists
-            try:
-                client.storage.get_bucket(bucket)
-            except Exception:
-                client.storage.create_bucket(bucket, options={"public": True})
-
-            # Convert FileStorage to bytes if needed
-            if hasattr(file_data, 'read'):
-                file_bytes = file_data.read()
-                # Reset stream position for potential local fallback
-                file_data.seek(0)
-            else:
-                file_bytes = file_data
-
-            # Detect content type
-            import mimetypes
-            content_type = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
-
-            result = client.storage.from_(bucket).upload(
-                path,
-                file_bytes,
-                file_options={"content-type": content_type, "upsert": "true"}
-            )
-            # Return public URL
-            public_url = client.storage.from_(bucket).get_public_url(path)
-            print(f"✅ Supabase Upload Success: bucket={bucket}, path={path}")
-            print(f"🔗 Public URL: {public_url}")
-            return public_url
-        except Exception as e:
-            print(f"❌ Supabase upload failed, falling back to local: {e}")
-            # Fall through to local storage
-
-    # Local storage fallback
-    backend_url = os.getenv('BACKEND_URL', '').rstrip('/')
-    upload_path = f'/api/v1/uploads/{folder}/{filename}'
-    
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], folder)
-    os.makedirs(upload_folder, exist_ok=True)
-    filepath = os.path.join(upload_folder, filename)
-
-    # file_data can be bytes or a FileStorage object
-    if hasattr(file_data, 'save'):
-        file_data.save(filepath)
-    else:
-        with open(filepath, 'wb') as f:
-            f.write(file_data)
-
-    return f"{backend_url}{upload_path}" if backend_url else upload_path
-
-
-def get_file_url(folder, filename):
-    """Get the public URL for a file."""
-    client = _get_supabase_client()
-    if client:
-        path = f"{folder}/{filename}"
-        return client.storage.from_('uploads').get_public_url(path)
-    
-    backend_url = os.getenv('BACKEND_URL', '').rstrip('/')
-    upload_path = f'/api/v1/uploads/{folder}/{filename}'
-    return f"{backend_url}{upload_path}" if backend_url else upload_path
+def delete_file(url):
+    """Remove a stored file by the URL upload_file returned. Caller commits."""
+    marker = '/api/v1/uploads/'
+    if url and marker in url:
+        StoredFile.query.filter_by(path=url.split(marker, 1)[1]).delete()

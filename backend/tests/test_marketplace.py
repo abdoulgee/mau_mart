@@ -1,7 +1,7 @@
 """End-to-end API tests on an in-memory SQLite database.
 
 Run from backend/:  python -m unittest discover -s tests
-Email and file storage are mocked, so nothing leaves the machine.
+Email is mocked and uploads are stored in the test database, so nothing leaves the machine.
 """
 import io
 import unittest
@@ -16,8 +16,6 @@ class MarketplaceTestCase(unittest.TestCase):
         self.sent_otps = {}
         self.patches = [
             patch('app.routes.auth.send_otp_email', side_effect=self._capture_otp),
-            patch('app.routes.products.upload_file', side_effect=lambda f, name, folder: f'/api/v1/uploads/{folder}/{name}'),
-            patch('app.routes.admin.upload_file', side_effect=lambda f, name, folder: f'/api/v1/uploads/{folder}/{name}'),
         ]
         for p in self.patches:
             p.start()
@@ -311,6 +309,22 @@ class MarketplaceTestCase(unittest.TestCase):
 
         res = self.client.post('/api/v1/admin/settings', headers=headers, json={'hero_title': 'x' * 81})
         self.assertEqual(res.status_code, 400)
+
+    def test_uploaded_photos_are_served_from_the_database(self):
+        headers, _ = self.register_and_login('seller@example.com')
+        product = self.post_listing(headers, images=2).get_json()['product']
+        first = product['media'][0]
+        url = first['url']
+        res = self.client.get(url)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data, b'img')
+        self.assertEqual(res.mimetype, 'image/jpeg')
+        self.assertIn('immutable', res.headers['Cache-Control'])
+
+        # Removing a photo removes the stored file too
+        res = self.client.delete(f"/api/v1/products/{product['id']}/images/{first['id']}", headers=headers)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(self.client.get(url).status_code, 404)
 
 
 if __name__ == '__main__':

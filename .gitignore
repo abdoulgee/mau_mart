@@ -39,3 +39,7 @@ backend/__pycache__/
 frontend/node_modules/
 frontend/dist/
 **/migrations/*.pyc
+
+# Local database dumps (contain user data)
+backend/db_dumps/
+database_connetion.txt
