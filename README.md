@@ -1,167 +1,130 @@
-# MAU MART - Campus Marketplace PWA
+# MAU MART - Campus Marketplace
 
-A comprehensive Progressive Web App (PWA) for campus marketplace, enabling students to buy and sell products, services, food, and accommodations.
+A simple marketplace that connects buyers and sellers on campus, like Facebook Marketplace for students.
 
-## 🚀 Features
+Anyone with an account can post things for sale. Buyers contact the seller through in-app chat or WhatsApp, meet on campus, and pay in person. There are no stores, carts, or online payments.
 
-### For Buyers
-- Browse products by categories
-- Search with filters
-- Real-time chat with sellers
-- Order tracking
-- Reviews and ratings
+## Features
 
-### For Sellers
-- Store dashboard with analytics
-- Product management
-- Order management
-- Subscription plans
-- Featured listings
-- Ad placements
+**Everyone**
+- Post a listing: up to 4 photos, title, price, category, condition, meet-up location
+- Edit, mark as sold or available again, and delete your own listings
+- Browse the latest listings, browse by category, and search with sort and condition filters
+- Chat in the app (real-time, with photos and read receipts) or tap **WhatsApp** to open a chat with a pre-filled message about the item
+- Save listings, view seller profiles, report listings or users
+- Notifications for new messages and moderation actions
 
-### For Admins
-- User management
-- Store approvals
-- Product moderation
-- Reports handling
-- SMTP configuration
-- Site settings
+**Admins**
+- Dashboard with users, listings, chats and pending reports
+- Suspend or edit users; super admins can change roles and reset passwords
+- Feature listings on the home page; remove and restore listings
+- Manage categories and home page banners
+- Review reports (dismiss, remove listing, suspend user)
+- App settings (branding, guest browsing, email verification, maintenance mode) and email provider (Resend or SMTP)
 
-## 🛠️ Tech Stack
+WhatsApp numbers are only shown to logged-in users.
 
-**Frontend:**
-- React 18 + Vite
-- Tailwind CSS
-- Zustand (state management)
-- Socket.IO client
-- PWA ready
+## Tech stack
 
-**Backend:**
-- Flask (Python)
-- PostgreSQL
-- Flask-SocketIO
-- JWT Authentication
-- Flask-Mail
+- **Frontend:** React 18 + Vite, Tailwind CSS, Zustand, Socket.IO client, PWA
+- **Backend:** Flask, SQLAlchemy + Flask-Migrate, Flask-JWT-Extended, Flask-SocketIO
+- **Database:** PostgreSQL (SQLite for tests)
+- **Storage:** Supabase Storage, with local disk as a fallback
+- **Email:** Resend or SMTP (codes are also printed to the server console)
 
-## 📦 Installation
+## Getting started
 
-### Prerequisites
-- Node.js 18+
-- Python 3.10+
-- PostgreSQL 14+
-
-### Frontend Setup
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-### Backend Setup
+### Backend
 
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-
-# Create .env file from .env.example
-cp .env.example .env
-
-# Initialize database
-flask db upgrade
-
-# Run server
-python run.py
+cp .env.example .env              # then fill in the values
+flask --app run db upgrade        # create the database tables
+flask --app run seed              # super admin + starter categories (safe to re-run)
+python run.py                     # http://localhost:5000
 ```
 
-### Environment Variables
+The super admin comes from `ADMIN_EMAIL` / `ADMIN_PASSWORD` (development default: `admin@maumart.com` / `Admin123!`; change it after logging in).
 
-Create `.env` in backend folder:
+**Local PostgreSQL:** create a database and role, then point `DATABASE_URL` at it:
 
-```env
-SECRET_KEY=your-secret-key
-DATABASE_URL=postgresql://user:pass@localhost/maumart
-JWT_SECRET_KEY=your-jwt-secret
-MAIL_SERVER=smtp.gmail.com
-MAIL_PORT=587
-MAIL_USERNAME=your-email@gmail.com
-MAIL_PASSWORD=your-app-password
+```bash
+psql -d postgres -c "CREATE ROLE maumart_app LOGIN PASSWORD 'choose-a-password';"
+psql -d postgres -c "CREATE DATABASE mau_mart_marketplace OWNER maumart_app;"
+# .env
+DATABASE_URL=postgresql://maumart_app:choose-a-password@localhost:5432/mau_mart_marketplace
 ```
 
-## 📱 PWA Installation
+### Frontend
 
-1. Open the app in Chrome/Safari
-2. Click "Install" or "Add to Home Screen"
-3. The app works offline with cached data
-
-## 🔒 API Authentication
-
-All protected routes require JWT token:
-
-```
-Authorization: Bearer <access_token>
+```bash
+cd frontend
+npm install
+cp .env.example .env              # VITE_API_URL=http://localhost:5000
+npm run dev                       # http://localhost:5173
 ```
 
-## 📁 Project Structure
+## Design system
 
-```
-mau_mart/
-├── frontend/
-│   ├── src/
-│   │   ├── components/     # Reusable UI components
-│   │   ├── pages/          # Route pages
-│   │   ├── layouts/        # App layouts
-│   │   ├── store/          # Zustand stores
-│   │   └── services/       # API services
-│   ├── vite.config.js
-│   └── package.json
-│
-└── backend/
-    ├── app/
-    │   ├── routes/         # API blueprints
-    │   ├── models.py       # Database models
-    │   ├── sockets.py      # WebSocket events
-    │   └── services/       # Business logic
-    ├── requirements.txt
-    └── run.py
+- **Colors** are semantic tokens (`canvas`, `surface`, `fg`, `brand`, `success`, `danger`, ...) defined as CSS variables in `src/index.css`, with a matching dark theme. Text and white-on-brand buttons meet WCAG AA contrast.
+- **Icons** are [Lucide](https://lucide.dev) only (`lucide-react`). Category icons are stored by Lucide name; the allowed set is in `src/utils/categoryIcons.js`.
+- **Type:** Inter; page titles `text-xl/2xl font-semibold`, section titles `text-base font-semibold`, body `text-sm`, metadata `text-xs`.
+- **Components** live in `src/components/ui`: `Button`/`IconButton` (hover, focus, active, disabled, loading), `TextField`/`SelectField`/`TextAreaField`/`PasswordField` (labels, hints, errors), `Panel`, `DataTable` (table on desktop, stacked rows on phones), `Modal`/`ConfirmDialog`, `Tabs`, `Badge`, `Alert`, `EmptyState`/`ErrorState`, skeletons, toasts.
+- **Forms** use `useForm` (`src/hooks/useForm.js`): fields validate on blur and on submit, focus moves to the first error, and server errors show as a form alert.
+- **Pages** use `Page` (marketplace) or `AdminPage` (admin) for consistent titles, spacing and responsive navigation.
+
+## Tests
+
+```bash
+cd backend
+python -m unittest discover -s tests -t .
 ```
 
-## 🎯 Key API Endpoints
+The tests run against an in-memory SQLite database. Email and file storage are mocked.
+
+## Changing the database schema
+
+Edit `backend/app/models.py`, then:
+
+```bash
+flask --app run db migrate -m "describe the change"
+flask --app run db upgrade
+```
+
+## Project structure
+
+```
+frontend/src/
+  pages/            Screens (Home, ProductDetail, ListingForm, Chat*, Profile*, admin/*)
+  components/       ProductCard, ListingResults, CategoryChips, navigation, ui/*
+  store/            Zustand stores (auth, chat, categories, settings, ui)
+  hooks/            usePaginatedList
+  services/api.js   Axios client with automatic token refresh
+backend/app/
+  models.py         User, Product, ProductMedia, Category, Chat, Message, Wishlist,
+                    Report, Notification, AdsBanner, SmtpConfig, AppSettings
+  routes/           auth, users, products, categories, chat, wishlist,
+                    notifications, reports, uploads, admin
+  sockets.py        Real-time chat delivery, typing and read receipts
+  utils.py          Shared helpers (auth decorators, pagination, notifications)
+backend/tests/      API tests
+```
+
+## Main API endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `POST /api/v1/auth/register` | User registration |
-| `POST /api/v1/auth/login` | User login |
-| `GET /api/v1/products` | List products |
-| `GET /api/v1/stores/:id` | Store profile |
-| `POST /api/v1/orders` | Create order |
-| `GET /api/v1/chats` | User chats |
-| `POST /api/v1/subscriptions/subscribe` | Subscribe to plan |
+| `POST /api/v1/auth/register` | Sign up (WhatsApp defaults to the phone number) |
+| `POST /api/v1/auth/login` | Log in with email or student ID |
+| `GET /api/v1/products` | Browse/search (`q`, `category`, `condition`, `sort`, `min_price`, `max_price`) |
+| `POST /api/v1/products` | Post a listing (multipart: fields + `images`) |
+| `POST /api/v1/products/:id/sold` | Mark sold / available |
+| `GET /api/v1/products/mine` | Your listings |
+| `GET /api/v1/users/:id` | Public seller profile |
+| `POST /api/v1/chat/start` | Open a chat about a listing (`product_id`) or with a user (`user_id`) |
+| `POST /api/v1/chat/:id/send` | Send a message |
 
-## 🧪 Testing
-
-```bash
-# Frontend
-npm run lint
-npm run build
-
-# Backend
-pytest
-```
-
-## 📄 License
-
-MIT License - See LICENSE file for details.
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create feature branch
-3. Commit changes
-4. Push and create PR
-
----
-
-Built with ❤️ for campus communities
+Protected routes need `Authorization: Bearer <access_token>`.

@@ -1,54 +1,55 @@
-# 🚀 MAU MART Production Deployment Guide
+# MAU MART Production Deployment
 
-This guide explains how to host your application online so that anyone, anywhere in the world, can access and test it.
+The backend runs on Render, the frontend on Vercel, the database on PostgreSQL (Supabase, CockroachDB or Render Postgres), and uploaded photos in Supabase Storage.
 
-## 1. Prerequisites
-- A **GitHub** account.
-- Your code pushed to a GitHub repository.
+## 1. Database
 
----
+The marketplace redesign uses a **new schema**. It does not work with a database created by the old store/orders version.
 
-11: ## 2. Backend Deployment (Render.com)
-12: We recommend **Render** because it supports Python and allows for persistent storage (so images don't disappear).
-13: 
-14: 1. Create a free account on [Render.com](https://render.com).
-15: 2. Click **New +** > **Web Service**.
-16: 3. Connect your GitHub repository.
-17: 4. **Settings**:
-18:    - **Root Directory**: `backend` (⚠️ CRITICAL: Point it to your backend folder)
-19:    - **Environment**: `Python`
-20:    - **Build Command**: `pip install -r requirements.txt`
-21:    - **Start Command**: `gunicorn --worker-class eventlet -w 1 run:app`
-22: 5. **Environment Variables**:
-...
-34: ## 3. Frontend Deployment (Vercel.com)
-35: Vercel is the best platform for React/Vite apps.
-36: 
-37: 1. Create a free account on [Vercel.com](https://vercel.com).
-38: 2. Click **Add New** > **Project**.
-39: 3. Import your GitHub repository.
-40: 4. **Settings**:
-41:    - **Root Directory**: `frontend` (⚠️ CRITICAL: Point it to your frontend folder)
-42:    - Vercel should automatically detect **Vite**.
-43: 5. **Environment Variables**:
-44:    - Add `VITE_API_URL`: (Your new Render Backend URL - e.g., `https://maumart-api.onrender.com`)
-45: 6. Click **Deploy**.
+- **Recommended:** create a new, empty PostgreSQL database and use its URL.
+- **Or** empty the old one yourself (drop all its tables, including `alembic_version`) before deploying. This deletes all existing data.
 
+Tables are created by migrations (`flask db upgrade`), not on app start.
 
----
+## 2. Backend (Render)
 
-## 4. CockroachDB Configuration
-Since you are using a cloud database, it's already "worldwide." You just need to check:
-1. Go to your **CockroachDB Cloud Console**.
-2. Go to **Networking** > **Allowlist**.
-3. For testing purposes, you can add `0.0.0.0/0` (allows all IPs) or add the specific outbound IP of your Render web service.
+1. **New +** > **Web Service**, connect the GitHub repository.
+2. Settings:
+   - **Root Directory:** `backend`
+   - **Environment:** Python (uses `runtime.txt`, Python 3.11)
+   - **Build Command:** `pip install -r requirements.txt`
+   - **Start Command:** `flask --app run db upgrade && gunicorn --worker-class eventlet -w 1 run:app`
+3. Environment variables:
 
----
+   | Variable | Value |
+   |----------|-------|
+   | `FLASK_ENV` | `production` |
+   | `SECRET_KEY`, `JWT_SECRET_KEY` | Long random strings (different from each other) |
+   | `DATABASE_URL` | PostgreSQL connection URL |
+   | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | First super admin. **Required in production.** Without them no admin is created. |
+   | `FRONTEND_URL` | Your Vercel URL, e.g. `https://maumart.vercel.app` (needed for CORS and live chat) |
+   | `BACKEND_URL` | This service's URL, e.g. `https://maumart-api.onrender.com` |
+   | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | For verification and password reset emails |
+   | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | For photo storage. Without them photos are saved on the server's disk, which Render wipes on each deploy. |
 
-## 5. Summary of URLs
-Once deployed, you will have two main URLs:
-- **Frontend**: `https://your-app-name.vercel.app` (This is what you share with testers).
-- **Backend**: `https://your-api-name.onrender.com` (Used for API calls).
+4. Deploy. The start command applies migrations, then starts the server.
 
-### 💡 Pro Tip
-If you want a professional look, you can buy a domain (like `maumart.com`) and point it to these URLs in the Vercel and Render settings.
+Keep `-w 1`: live chat keeps connection state in memory, so it needs a single worker.
+
+## 3. Frontend (Vercel)
+
+1. **Add New** > **Project**, import the repository.
+2. **Root Directory:** `frontend` (Vercel detects Vite).
+3. Environment variable `VITE_API_URL` = the Render backend URL, e.g. `https://maumart-api.onrender.com`.
+4. Deploy. `vercel.json` already routes every path to the app.
+
+## 4. After the first deploy
+
+1. Log in with `ADMIN_EMAIL` / `ADMIN_PASSWORD` and change the password (Profile > Change password).
+2. **Admin > Categories:** add categories (e.g. Phones & Gadgets, Books, Fashion, Food, Hostel Items).
+3. **Admin > App settings:** site name, logo, support email, and your WhatsApp number if you want sellers to be able to request featured listings.
+4. **Admin > Email:** choose Resend or SMTP and send a test email.
+
+## 5. Database network access
+
+If your database provider restricts connections by IP (e.g. CockroachDB's allowlist), allow Render's outbound IPs, or `0.0.0.0/0` while testing.

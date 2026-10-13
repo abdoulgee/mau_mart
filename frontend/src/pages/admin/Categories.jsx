@@ -1,158 +1,136 @@
 import { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { Eye, EyeOff, LayoutGrid, Pencil, Plus } from 'lucide-react'
+import { AdminPage } from '../../layouts/AdminLayout'
+import Panel from '../../components/ui/Panel'
+import Button, { IconButton } from '../../components/ui/Button'
+import Modal from '../../components/ui/Modal'
+import DataTable from '../../components/ui/DataTable'
+import { Alert, Badge, EmptyState } from '../../components/ui/Feedback'
+import { TextField } from '../../components/ui/Field'
+import useForm, { rules } from '../../hooks/useForm'
+import api, { errorMessage } from '../../services/api'
 import useUIStore from '../../store/uiStore'
-import { Skeleton } from '../../components/ui/Skeleton'
 import useCategoryStore from '../../store/categoryStore'
+import { CATEGORY_ICONS, categoryIcon } from '../../utils/categoryIcons'
+import cn from '../../utils/cn'
+
+function IconPicker({ value, onChange }) {
+    return (
+        <fieldset>
+            <legend className="mb-1.5 text-sm font-medium text-fg">Icon</legend>
+            <div className="grid grid-cols-6 gap-2 sm:grid-cols-8" role="radiogroup">
+                {Object.entries(CATEGORY_ICONS).map(([name, Icon]) => (
+                    <label key={name} title={name}
+                        className={cn('flex h-10 cursor-pointer items-center justify-center rounded-lg border transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand',
+                            value === name ? 'border-brand bg-brand-soft text-brand-text' : 'border-line text-fg-muted hover:border-line-strong hover:text-fg')}>
+                        <input type="radio" name="icon" value={name} checked={value === name} onChange={() => onChange(name)} className="sr-only" aria-label={name.replace(/-/g, ' ')} />
+                        <Icon size={18} aria-hidden />
+                    </label>
+                ))}
+            </div>
+        </fieldset>
+    )
+}
+
+function CategoryModal({ category, onClose, onSaved }) {
+    const form = useForm(
+        { name: category?.name || '', icon: category?.icon || 'package', sort_order: category?.sort_order ?? 0 },
+        { name: [rules.required('Enter a name'), rules.maxLength(100)], sort_order: [rules.number({ min: 0 })] }
+    )
+    const submit = form.handleSubmit(async (values) => {
+        try {
+            const payload = { ...values, sort_order: Number(values.sort_order) || 0 }
+            if (category) await api.put(`/api/v1/admin/categories/${category.id}`, payload)
+            else await api.post('/api/v1/admin/categories', payload)
+            onSaved(category ? 'Category updated' : 'Category added')
+        } catch (error) {
+            throw new Error(errorMessage(error))
+        }
+    })
+    return (
+        <Modal open onClose={onClose} title={category ? 'Edit category' : 'New category'}
+            footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={submit} loading={form.submitting}>Save</Button></>}>
+            <form onSubmit={submit} noValidate className="space-y-4">
+                {form.formError && <Alert tone="danger">{form.formError}</Alert>}
+                <TextField label="Name" required placeholder="e.g. Phones & Gadgets" {...form.field('name')} />
+                <IconPicker value={form.values.icon} onChange={(v) => form.setValue('icon', v)} />
+                <TextField label="Display order" type="number" min="0" hint="Lower numbers appear first." {...form.field('sort_order')} />
+            </form>
+        </Modal>
+    )
+}
 
 export default function AdminCategories() {
-    const { categories, loading, fetchCategories, connectSocket } = useCategoryStore()
-    const [showModal, setShowModal] = useState(false)
-    const [editingCategory, setEditingCategory] = useState(null)
-    const [formData, setFormData] = useState({ name: '', description: '', icon: '' })
+    const [categories, setCategories] = useState([])
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState(false)
+    const [editing, setEditing] = useState(null) // category object, or 'new'
     const { addToast } = useUIStore()
 
-    useEffect(() => {
-        connectSocket()
-        fetchCategories(true)
-    }, [])
-
-
-    const handleSubmit = async (e) => {
-        e.preventDefault()
+    const load = async () => {
+        setError(false)
         try {
-            if (editingCategory) {
-                await api.put(`/api/v1/admin/categories/${editingCategory.id}`, formData)
-                addToast({ type: 'success', message: 'Category updated!' })
-            } else {
-                await api.post('/api/v1/admin/categories', formData)
-                addToast({ type: 'success', message: 'Category created!' })
-            }
-            setShowModal(false)
-            setFormData({ name: '', description: '', icon: '' })
-            setEditingCategory(null)
-            // No need to explicitly fetch as socket will trigger it, but doing it for immediate feedback
-            fetchCategories(true)
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to save category' })
+            const { data } = await api.get('/api/v1/admin/categories')
+            setCategories(data.categories || [])
+        } catch {
+            setError(true)
+        } finally {
+            setLoading(false)
+        }
+    }
+    useEffect(() => { load() }, [])
+
+    const refresh = (message) => {
+        setEditing(null)
+        addToast({ type: 'success', message })
+        load()
+        useCategoryStore.getState().fetchCategories(true)
+    }
+
+    const toggleVisible = async (category) => {
+        try {
+            await api.put(`/api/v1/admin/categories/${category.id}`, { is_active: !category.is_active })
+            refresh(category.is_active ? `"${category.name}" hidden` : `"${category.name}" is visible`)
+        } catch (err) {
+            addToast({ type: 'error', message: errorMessage(err) })
         }
     }
 
-    const handleEdit = (category) => {
-        setEditingCategory(category)
-        setFormData({ name: category.name, description: category.description || '', icon: category.icon || '' })
-        setShowModal(true)
-    }
-
-    const handleDelete = async (id) => {
-        if (!confirm('Delete this category?')) return
-        try {
-            await api.delete(`/api/v1/admin/categories/${id}`)
-            addToast({ type: 'success', message: 'Category deleted' })
-            fetchCategories(true)
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to delete category' })
-        }
-    }
-
-    const icons = ['🍔', '📱', '👗', '📚', '🛠️', '🏠', '⚽', '💊', '🎮', '🎨', '🚗', '💼']
+    const columns = [
+        {
+            key: 'name', header: 'Category', primary: true,
+            render: (c) => {
+                const Icon = categoryIcon(c)
+                return (
+                    <span className="flex items-center gap-3">
+                        <span className="flex h-9 w-9 items-center justify-center rounded-md bg-surface-muted text-fg-muted"><Icon size={18} aria-hidden /></span>
+                        <span className="font-medium text-fg">{c.name}</span>
+                    </span>
+                )
+            },
+        },
+        { key: 'listings', header: 'Listings', align: 'right', render: (c) => <span className="tabular">{c.listings_count}</span> },
+        { key: 'order', header: 'Order', align: 'right', render: (c) => <span className="tabular text-fg-muted">{c.sort_order}</span> },
+        { key: 'status', header: 'Visibility', render: (c) => (c.is_active ? <Badge tone="success" dot>Visible</Badge> : <Badge dot>Hidden</Badge>) },
+        {
+            key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+            render: (c) => (
+                <div className="flex justify-end gap-1">
+                    <IconButton icon={Pencil} label={`Edit ${c.name}`} size="sm" onClick={() => setEditing(c)} />
+                    <IconButton icon={c.is_active ? EyeOff : Eye} label={c.is_active ? `Hide ${c.name}` : `Show ${c.name}`} size="sm" onClick={() => toggleVisible(c)} />
+                </div>
+            ),
+        },
+    ]
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Categories</h1>
-                <button onClick={() => { setEditingCategory(null); setFormData({ name: '', description: '', icon: '📦' }); setShowModal(true) }} className="btn-primary">
-                    + Add Category
-                </button>
-            </div>
-
-            <div className="card overflow-hidden">
-                <table className="w-full">
-                    <thead className="bg-gray-50 border-b">
-                        <tr>
-                            <th className="text-left p-4 text-sm font-medium text-gray-500">Icon</th>
-                            <th className="text-left p-4 text-sm font-medium text-gray-500">Name</th>
-                            <th className="text-left p-4 text-sm font-medium text-gray-500">Slug</th>
-                            <th className="text-left p-4 text-sm font-medium text-gray-500">Products</th>
-                            <th className="text-right p-4 text-sm font-medium text-gray-500">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                        {loading ? (
-                            Array.from({ length: 5 }).map((_, i) => (
-                                <tr key={i}><td colSpan={5} className="p-4"><Skeleton className="h-10 w-full" /></td></tr>
-                            ))
-                        ) : categories.length > 0 ? (
-                            categories.map(cat => (
-                                <tr key={cat.id} className="hover:bg-gray-50">
-                                    <td className="p-4 text-2xl">
-                                        {cat.icon && cat.icon.trim().startsWith('<') ? (
-                                            <span className="inline-flex items-center justify-center w-8 h-8 [&>svg]:w-7 [&>svg]:h-7 [&>svg]:text-gray-700" dangerouslySetInnerHTML={{ __html: cat.icon }} />
-                                        ) : (
-                                            cat.icon || '📦'
-                                        )}
-                                    </td>
-                                    <td className="p-4 font-medium text-gray-900">{cat.name}</td>
-                                    <td className="p-4 text-gray-500">{cat.slug}</td>
-                                    <td className="p-4 text-gray-600">{cat.product_count || 0}</td>
-                                    <td className="p-4 text-right space-x-2">
-                                        <button onClick={() => handleEdit(cat)} className="text-sm px-3 py-1 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100">Edit</button>
-                                        <button onClick={() => handleDelete(cat.id)} className="text-sm px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100">Delete</button>
-                                    </td>
-                                </tr>
-                            ))
-                        ) : (
-                            <tr><td colSpan={5} className="p-8 text-center text-gray-500">No categories found</td></tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-                        <h3 className="text-lg font-bold mb-4">{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
-                        <form onSubmit={handleSubmit} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
-                                <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="input" required />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                                <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="input" rows={2} />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">Icon</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {icons.map(icon => (
-                                        <button key={icon} type="button" onClick={() => setFormData({ ...formData, icon })} className={`w-10 h-10 rounded-lg text-xl ${formData.icon === icon ? 'bg-primary-100 ring-2 ring-primary-500' : 'bg-gray-100 hover:bg-gray-200'}`}>{icon}</button>
-                                    ))}
-                                </div>
-                                <div className="mt-3">
-                                    <label className="block text-xs font-medium text-gray-500 mb-1">Or paste SVG code:</label>
-                                    <textarea
-                                        value={formData.icon?.trim().startsWith('<') ? formData.icon : ''}
-                                        onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                                        className="input text-xs font-mono"
-                                        rows={3}
-                                        placeholder='<svg viewBox="0 0 24 24" ...>...</svg>'
-                                    />
-                                    {formData.icon?.trim().startsWith('<') && (
-                                        <div className="mt-2 flex items-center gap-2">
-                                            <span className="text-xs text-gray-500">Preview:</span>
-                                            <span className="inline-flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg [&>svg]:w-6 [&>svg]:h-6" dangerouslySetInnerHTML={{ __html: formData.icon }} />
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div className="flex gap-3 pt-2">
-                                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary flex-1">Cancel</button>
-                                <button type="submit" className="btn-primary flex-1">Save</button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-        </div>
+        <AdminPage title="Categories" description="Hidden categories keep their listings and can be shown again."
+            actions={<Button icon={Plus} onClick={() => setEditing('new')}>New category</Button>}>
+            <Panel padded={false}>
+                <DataTable caption="Categories" columns={columns} rows={categories} loading={loading} error={error} onRetry={load}
+                    empty={<EmptyState icon={LayoutGrid} title="No categories yet" action={<Button icon={Plus} onClick={() => setEditing('new')}>Add the first one</Button>} />} />
+            </Panel>
+            {editing && <CategoryModal category={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={refresh} />}
+        </AdminPage>
     )
 }

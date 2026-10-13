@@ -1,131 +1,162 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import api from '../../services/api'
+import { Link, useSearchParams } from 'react-router-dom'
+import { ArchiveRestore, ExternalLink, ImageOff, Package, Search, Star, StarOff, Trash2 } from 'lucide-react'
+import { AdminPage } from '../../layouts/AdminLayout'
+import Panel from '../../components/ui/Panel'
+import Tabs from '../../components/ui/Tabs'
+import { IconButton } from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/Modal'
+import DataTable from '../../components/ui/DataTable'
+import { Pager } from '../../components/ui/Pagination'
+import { Badge, EmptyState } from '../../components/ui/Feedback'
+import { TextField } from '../../components/ui/Field'
+import api, { errorMessage } from '../../services/api'
 import useUIStore from '../../store/uiStore'
-import { Skeleton } from '../../components/ui/Skeleton'
+import getImageUrl from '../../utils/imageUrl'
+import { formatPrice, timeAgo, fullName } from '../../utils/format'
+
+const FILTERS = [
+    { value: '', label: 'All' },
+    { value: 'active', label: 'Active' },
+    { value: 'sold', label: 'Sold' },
+    { value: 'featured', label: 'Featured' },
+    { value: 'removed', label: 'Removed' },
+]
+
+function StatusBadge({ product }) {
+    if (!product.is_active) return <Badge tone="danger" dot>Removed</Badge>
+    if (product.is_sold) return <Badge dot>Sold</Badge>
+    return <Badge tone="success" dot>Active</Badge>
+}
 
 export default function AdminProducts() {
-    const [products, setProducts] = useState([])
-    const [loading, setLoading] = useState(true)
-    const [page, setPage] = useState(1)
-    const [pagination, setPagination] = useState({})
+    const [searchParams, setSearchParams] = useSearchParams()
+    const status = searchParams.get('status') || ''
     const [search, setSearch] = useState('')
+    const [query, setQuery] = useState('')
+    const [page, setPage] = useState(1)
+    const [data, setData] = useState({ products: [], pagination: {} })
+    const [loading, setLoading] = useState(true)
+    const [error, setError] = useState(false)
+    const [removing, setRemoving] = useState(null)
+    const [pending, setPending] = useState(null)
     const { addToast } = useUIStore()
 
-    useEffect(() => {
-        fetchProducts()
-    }, [page, search])
-
-    const fetchProducts = async () => {
+    const load = async () => {
         setLoading(true)
+        setError(false)
         try {
-            const response = await api.get('/api/v1/products', { params: { page, limit: 20, search } })
-            setProducts(response.data.products || [])
-            setPagination(response.data.pagination || {})
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to load products' })
+            const res = await api.get('/api/v1/admin/products', { params: { page, search: query, status } })
+            setData(res.data)
+        } catch {
+            setError(true)
         } finally {
             setLoading(false)
         }
     }
+    useEffect(() => { load() }, [page, query, status])
 
-    const handleToggleFeatured = async (productId, isFeatured) => {
+    const update = async (product, changes, message) => {
+        setPending(product.id)
         try {
-            await api.patch(`/api/v1/admin/products/${productId}`, { is_featured: !isFeatured })
-            addToast({ type: 'success', message: isFeatured ? 'Removed from featured' : 'Added to featured' })
-            fetchProducts()
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to update product' })
+            await api.patch(`/api/v1/admin/products/${product.id}`, changes)
+            addToast({ type: 'success', message })
+            setRemoving(null)
+            load()
+        } catch (err) {
+            addToast({ type: 'error', message: errorMessage(err) })
+        } finally {
+            setPending(null)
         }
     }
 
-    const handleDelete = async (productId) => {
-        if (!confirm('Delete this product?')) return
-        try {
-            await api.delete(`/api/v1/products/${productId}`)
-            addToast({ type: 'success', message: 'Product deleted' })
-            fetchProducts()
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to delete product' })
-        }
-    }
+    const columns = [
+        {
+            key: 'listing', header: 'Listing', primary: true,
+            render: (p) => (
+                <div className="flex items-center gap-3">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md border border-line bg-surface-muted text-fg-subtle">
+                        {p.media?.[0] ? <img src={getImageUrl(p.media[0].url)} alt="" className="h-full w-full object-cover" /> : <ImageOff size={16} aria-hidden />}
+                    </span>
+                    <div className="min-w-0">
+                        <Link to={`/product/${p.id}`} target="_blank" className="inline-flex max-w-full items-center gap-1 font-medium text-fg hover:underline">
+                            <span className="truncate">{p.title}</span><ExternalLink size={12} aria-hidden className="shrink-0 text-fg-subtle" />
+                        </Link>
+                        <p className="truncate text-xs text-fg-subtle">{fullName(p.seller)}{p.category && ` · ${p.category.name}`}</p>
+                    </div>
+                </div>
+            ),
+        },
+        { key: 'price', header: 'Price', align: 'right', render: (p) => <span className="tabular">{formatPrice(p.price)}</span> },
+        {
+            key: 'status', header: 'Status',
+            render: (p) => (
+                <div className="flex flex-wrap gap-1">
+                    <StatusBadge product={p} />
+                    {p.is_featured && <Badge tone="brand"><Star size={12} aria-hidden />Featured</Badge>}
+                </div>
+            ),
+        },
+        { key: 'views', header: 'Views', align: 'right', render: (p) => <span className="tabular text-fg-muted">{p.views}</span> },
+        { key: 'posted', header: 'Posted', render: (p) => <span className="text-fg-muted">{timeAgo(p.created_at)}</span> },
+        {
+            key: 'actions', header: <span className="sr-only">Actions</span>, align: 'right',
+            render: (p) => (
+                <div className="flex justify-end gap-1">
+                    {p.is_active && (
+                        <IconButton
+                            icon={p.is_featured ? StarOff : Star}
+                            label={p.is_featured ? 'Remove from featured' : 'Feature on home page'}
+                            size="sm"
+                            disabled={pending === p.id}
+                            onClick={() => update(p, { is_featured: !p.is_featured }, p.is_featured ? 'Removed from featured' : 'Featured on the home page')}
+                        />
+                    )}
+                    {p.is_active ? (
+                        <IconButton icon={Trash2} label="Remove listing" size="sm" variant="danger-ghost" onClick={() => setRemoving(p)} />
+                    ) : (
+                        <IconButton icon={ArchiveRestore} label="Restore listing" size="sm" disabled={pending === p.id}
+                            onClick={() => update(p, { is_active: true }, 'Listing restored')} />
+                    )}
+                </div>
+            ),
+        },
+    ]
 
     return (
-        <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
-                <h1 className="text-2xl font-bold text-gray-900">Products</h1>
-                <input type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search products..." className="px-4 py-2 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500" />
+        <AdminPage title="Listings" description={data.pagination.total != null ? `${data.pagination.total.toLocaleString()} listings` : undefined}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <Tabs label="Filter by status" value={status} options={FILTERS}
+                    onChange={(v) => { setPage(1); setSearchParams(v ? { status: v } : {}) }} />
+                <form role="search" onSubmit={(e) => { e.preventDefault(); setPage(1); setQuery(search.trim()) }} className="sm:w-72">
+                    <TextField icon={Search} type="search" placeholder="Search titles" aria-label="Search listings"
+                        value={search} onChange={(e) => setSearch(e.target.value)} />
+                </form>
             </div>
 
-            <div className="card overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="w-full">
-                        <thead className="bg-gray-50 border-b">
-                            <tr>
-                                <th className="text-left p-4 text-sm font-medium text-gray-500">Product</th>
-                                <th className="text-left p-4 text-sm font-medium text-gray-500">Store</th>
-                                <th className="text-left p-4 text-sm font-medium text-gray-500">Price</th>
-                                <th className="text-left p-4 text-sm font-medium text-gray-500">Stock</th>
-                                <th className="text-left p-4 text-sm font-medium text-gray-500">Status</th>
-                                <th className="text-right p-4 text-sm font-medium text-gray-500">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y">
-                            {loading ? (
-                                Array.from({ length: 5 }).map((_, i) => (
-                                    <tr key={i}><td colSpan={6} className="p-4"><Skeleton className="h-16 w-full" /></td></tr>
-                                ))
-                            ) : products.length > 0 ? (
-                                products.map(product => (
-                                    <tr key={product.id} className="hover:bg-gray-50">
-                                        <td className="p-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-12 h-12 rounded-lg bg-gray-100 overflow-hidden">
-                                                    {product.media?.[0]?.url ? (
-                                                        <img src={product.media[0].url} alt="" className="w-full h-full object-cover" />
-                                                    ) : <div className="w-full h-full flex items-center justify-center">📦</div>}
-                                                </div>
-                                                <div>
-                                                    <p className="font-medium text-gray-900 line-clamp-1">{product.title}</p>
-                                                    <p className="text-xs text-gray-500">ID: {product.id}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="p-4 text-gray-600">{product.store?.name || '-'}</td>
-                                        <td className="p-4 font-medium">₦{product.price?.toLocaleString()}</td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded-full text-xs ${product.stock_quantity > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                {product.stock_quantity > 0 ? `${product.stock_quantity} in stock` : 'Out of stock'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4">
-                                            {product.is_featured && <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded-full text-xs mr-1">Featured</span>}
-                                            {product.is_active ? <span className="px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs">Active</span> : <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs">Inactive</span>}
-                                        </td>
-                                        <td className="p-4 text-right space-x-2">
-                                            <button onClick={() => handleToggleFeatured(product.id, product.is_featured)} className={`text-xs px-3 py-1 rounded-lg ${product.is_featured ? 'bg-yellow-50 text-yellow-600' : 'bg-gray-50 text-gray-600'}`}>
-                                                {product.is_featured ? '★ Featured' : '☆ Feature'}
-                                            </button>
-                                            <Link to={`/product/${product.id}`} className="text-xs px-3 py-1 bg-blue-50 text-blue-600 rounded-lg">View</Link>
-                                            <button onClick={() => handleDelete(product.id)} className="text-xs px-3 py-1 bg-red-50 text-red-600 rounded-lg">Delete</button>
-                                        </td>
-                                    </tr>
-                                ))
-                            ) : (
-                                <tr><td colSpan={6} className="p-8 text-center text-gray-500">No products found</td></tr>
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <Panel padded={false}>
+                <DataTable
+                    caption="Listings"
+                    columns={columns}
+                    rows={data.products}
+                    loading={loading}
+                    error={error}
+                    onRetry={load}
+                    empty={<EmptyState icon={Package} title="No listings found" message={query ? 'Try a different search.' : undefined} />}
+                />
+                <Pager page={page} pages={data.pagination.pages} total={data.pagination.total} onChange={setPage} />
+            </Panel>
 
-            {pagination.pages > 1 && (
-                <div className="flex items-center justify-center gap-2">
-                    <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-4 py-2 bg-gray-100 rounded-lg disabled:opacity-50">Previous</button>
-                    <span className="text-gray-600">Page {page} of {pagination.pages}</span>
-                    <button onClick={() => setPage(p => Math.min(pagination.pages, p + 1))} disabled={page === pagination.pages} className="px-4 py-2 bg-gray-100 rounded-lg disabled:opacity-50">Next</button>
-                </div>
-            )}
-        </div>
+            <ConfirmDialog
+                open={!!removing}
+                title="Remove this listing?"
+                message={`"${removing?.title}" will be hidden from the marketplace and the seller will be notified. You can restore it later.`}
+                confirmLabel="Remove listing"
+                danger
+                loading={pending === removing?.id}
+                onConfirm={() => update(removing, { is_active: false }, 'Listing removed')}
+                onClose={() => setRemoving(null)}
+            />
+        </AdminPage>
     )
 }

@@ -2,7 +2,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from flask import current_app
-import traceback
 import os
 
 
@@ -165,7 +164,9 @@ def send_email(to_email, subject, html, text=None, smtp_config=None):
     provider = 'smtp'   -> uses SMTP (from DB config or env config)
     """
     provider = _get_email_provider()
-    print(f"📧 Email provider: {provider}")
+    if smtp_config is None:
+        from app.models import SmtpConfig
+        smtp_config = SmtpConfig.query.filter_by(is_active=True).first()
 
     if provider == 'resend':
         result = _send_via_resend(to_email, subject, html, text)
@@ -198,40 +199,3 @@ def send_otp_email(to_email, otp, purpose='Verification'):
     if not result:
         print("   OTP has been printed to console above.")
     return result
-
-
-def send_receipt_email(to_email, order, receipt_url):
-    """Send order receipt email"""
-    print("\n" + "="*50)
-    print(f"📧 RECEIPT EMAIL TO: {to_email}")
-    print(f"📦 ORDER: #{order.order_number}")
-    print(f"📄 RECEIPT: {receipt_url}")
-    print("="*50 + "\n")
-    return True
-
-
-def send_notification_email(to_email, subject, message):
-    """Send general notification email"""
-    print("\n" + "="*50)
-    print(f"📧 NOTIFICATION TO: {to_email}")
-    print(f"📌 SUBJECT: {subject}")
-    print(f"📝 MESSAGE: {message}")
-    print("="*50 + "\n")
-    return True
-
-
-def send_smtp_email(to_email, subject, body, config=None, html=None):
-    """
-    Send email using the configured provider.
-    Used by email marketing and SMTP test features.
-    smtp_config from DB is passed to SMTP if SMTP is the active provider.
-    """
-    if not html:
-        html = f"<div style='font-family: sans-serif;'>{body}</div>"
-
-    # For SMTP test, we load config from DB
-    if not config:
-        from app.models import SmtpConfig
-        config = SmtpConfig.query.filter_by(is_active=True).first()
-
-    return send_email(to_email, subject, html, body, smtp_config=config)

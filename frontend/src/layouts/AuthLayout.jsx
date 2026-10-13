@@ -1,28 +1,36 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom'
+import Logo from '../components/navigation/Logo'
 import useAuthStore from '../store/authStore'
 
 export default function AuthLayout() {
     const { isAuthenticated } = useAuthStore()
     const location = useLocation()
 
-    // Redirect authenticated users away from auth pages
     if (isAuthenticated && !location.pathname.includes('verify-otp')) {
-        const from = location.state?.from?.pathname || '/'
-        return <Navigate to={from} replace />
+        const from = location.state?.from
+        return <Navigate to={from ? from.pathname + (from.search || '') : '/'} replace />
     }
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-secondary-50">
-            {/* Background decoration */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                <div className="absolute -top-40 -right-40 w-80 h-80 bg-primary-200/30 rounded-full blur-3xl" />
-                <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-secondary-200/30 rounded-full blur-3xl" />
-            </div>
+        <div className="flex min-h-screen flex-col">
+            <header className="px-4 py-4 sm:px-6">
+                <Logo />
+            </header>
+            <main id="main" className="flex flex-1 items-start justify-center px-4 pb-12 pt-6 sm:items-center sm:pt-0">
+                <div className="w-full max-w-sm">
+                    <Outlet />
+                </div>
+            </main>
+        </div>
+    )
+}
 
-            {/* Content */}
-            <div className="relative max-w-lg mx-auto px-4 py-8">
-                <Outlet />
-            </div>
+/** Heading block shared by the auth screens */
+export function AuthHeading({ title, children }) {
+    return (
+        <div className="mb-6 space-y-1.5">
+            <h1 className="text-2xl font-semibold text-fg">{title}</h1>
+            {children && <p className="text-sm text-fg-muted">{children}</p>}
         </div>
     )
 }

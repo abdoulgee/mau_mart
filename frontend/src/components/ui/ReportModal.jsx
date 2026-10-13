@@ -1,105 +1,65 @@
-import { useState } from 'react'
-import api from '../../services/api'
+import { useEffect } from 'react'
+import Modal from './Modal'
+import Button from './Button'
+import { SelectField, TextAreaField } from './Field'
+import { Alert } from './Feedback'
+import useForm, { rules } from '../../hooks/useForm'
+import api, { errorMessage } from '../../services/api'
 import useUIStore from '../../store/uiStore'
 
-const REPORT_REASONS = [
-    'Inappropriate content',
-    'Fraudulent activity',
-    'Counterfeit product',
-    'Offensive language',
-    'Misleading information',
-    'Harassment',
-    'Other'
-]
+const REASONS = {
+    product: ['Scam or fraud', 'Counterfeit or fake item', 'Prohibited item', 'Misleading description or price', 'Duplicate listing', 'Other'],
+    user: ['Scam or fraud', 'Harassment or abuse', 'Fake profile', 'Spam', 'Other'],
+}
 
 export default function ReportModal({ isOpen, onClose, entityType, entityId }) {
-    const [reason, setReason] = useState('')
-    const [description, setDescription] = useState('')
-    const [loading, setLoading] = useState(false)
     const { addToast } = useUIStore()
+    const form = useForm({ reason: '', description: '' }, {
+        reason: [rules.required('Choose a reason')],
+        description: [rules.maxLength(500)],
+    })
 
-    if (!isOpen) return null
-
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-        if (!reason) {
-            addToast({ type: 'warning', message: 'Please select a reason' })
-            return
+    useEffect(() => {
+        if (isOpen) {
+            form.setValues({ reason: '', description: '' })
+            form.setErrors({})
+            form.setFormError(null)
         }
+    }, [isOpen])
 
-        setLoading(true)
+    const submit = form.handleSubmit(async (values) => {
         try {
-            await api.post('/api/v1/reports', {
-                entity_type: entityType,
-                entity_id: entityId,
-                reason,
-                description
-            })
-            addToast({ type: 'success', message: 'Report submitted. Thank you for making MAU MART safer!' })
+            const { data } = await api.post('/api/v1/reports', { entity_type: entityType, entity_id: entityId, ...values })
+            addToast({ type: 'success', message: data.message === 'Report submitted' ? 'Thanks. Our team will review this report.' : data.message })
             onClose()
         } catch (error) {
-            addToast({ type: 'error', message: error.response?.data?.message || 'Failed to submit report' })
-        } finally {
-            setLoading(false)
+            throw new Error(errorMessage(error, 'Could not send the report'))
         }
-    }
+    })
+
+    const noun = entityType === 'product' ? 'listing' : 'user'
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white rounded-2xl w-full max-w-md p-6 animate-scale-up">
-                <div className="flex items-center justify-between mb-6">
-                    <h2 className="text-xl font-bold text-gray-900">Report {entityType}</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-                        <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Reason</label>
-                        <select
-                            value={reason}
-                            onChange={(e) => setReason(e.target.value)}
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                            required
-                        >
-                            <option value="">Select a reason</option>
-                            {REPORT_REASONS.map(r => (
-                                <option key={r} value={r}>{r}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Details (Optional)</label>
-                        <textarea
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Tell us more about the issue..."
-                            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 h-32 resize-none focus:outline-none focus:ring-2 focus:ring-primary-500"
-                        />
-                    </div>
-
-                    <div className="flex gap-3 pt-2">
-                        <button
-                            type="button"
-                            onClick={onClose}
-                            className="btn-secondary flex-1"
-                        >
-                            Cancel
-                        </button>
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="btn-primary flex-1"
-                        >
-                            {loading ? 'Submitting...' : 'Submit Report'}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+        <Modal
+            open={isOpen}
+            onClose={onClose}
+            title={`Report ${noun}`}
+            description="Reports are anonymous to the person you report."
+            footer={
+                <>
+                    <Button variant="secondary" onClick={onClose} disabled={form.submitting}>Cancel</Button>
+                    <Button variant="danger" onClick={submit} loading={form.submitting}>Send report</Button>
+                </>
+            }
+        >
+            <form onSubmit={submit} className="space-y-4" noValidate>
+                {form.formError && <Alert tone="danger">{form.formError}</Alert>}
+                <SelectField label="Reason" required {...form.field('reason')}>
+                    <option value="">Choose a reason</option>
+                    {REASONS[entityType]?.map((r) => <option key={r} value={r}>{r}</option>)}
+                </SelectField>
+                <TextAreaField label="Details" optional maxLength={500} placeholder={`What's wrong with this ${noun}?`} {...form.field('description')} />
+            </form>
+        </Modal>
     )
 }

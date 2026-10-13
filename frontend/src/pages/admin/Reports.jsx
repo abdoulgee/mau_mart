@@ -1,154 +1,144 @@
 import { useState, useEffect } from 'react'
-import api from '../../services/api'
+import { Link } from 'react-router-dom'
+import { Ban, Check, ExternalLink, Flag, Package, Trash2, User } from 'lucide-react'
+import { AdminPage } from '../../layouts/AdminLayout'
+import Panel from '../../components/ui/Panel'
+import Tabs from '../../components/ui/Tabs'
+import Button from '../../components/ui/Button'
+import { ConfirmDialog } from '../../components/ui/Modal'
+import { Pager } from '../../components/ui/Pagination'
+import { Badge, EmptyState, ErrorState } from '../../components/ui/Feedback'
+import { SkeletonRows } from '../../components/ui/Skeleton'
+import api, { errorMessage } from '../../services/api'
 import useUIStore from '../../store/uiStore'
-import { Skeleton } from '../../components/ui/Skeleton'
+import useAuthStore from '../../store/authStore'
+import { timeAgo, fullName } from '../../utils/format'
 
-const reportTypes = {
-    product: { icon: '📦', label: 'Product' },
-    store: { icon: '🏪', label: 'Store' },
-    user: { icon: '👤', label: 'User' },
-    review: { icon: '⭐', label: 'Review' },
+const TABS = [
+    { value: 'pending', label: 'Pending' },
+    { value: 'resolved', label: 'Resolved' },
+    { value: 'dismissed', label: 'Dismissed' },
+]
+
+const ACTIONS = {
+    remove_listing: { title: 'Remove this listing?', message: 'The listing will be hidden and the seller notified.', label: 'Remove listing' },
+    suspend_user: { title: 'Suspend this account?', message: "They won't be able to log in, and their listings will be hidden.", label: 'Suspend' },
 }
 
 export default function AdminReports() {
-    const [reports, setReports] = useState([])
+    const [status, setStatus] = useState('pending')
+    const [page, setPage] = useState(1)
+    const [data, setData] = useState({ reports: [], pagination: {} })
     const [loading, setLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState('pending')
-    const [selectedReport, setSelectedReport] = useState(null)
+    const [error, setError] = useState(false)
+    const [confirm, setConfirm] = useState(null) // { report, action }
+    const [pending, setPending] = useState(null)
     const { addToast } = useUIStore()
+    const isSuper = useAuthStore((s) => s.user?.role === 'super_admin')
 
-    useEffect(() => {
-        fetchReports()
-    }, [activeTab])
-
-    const fetchReports = async () => {
+    const load = async () => {
         setLoading(true)
+        setError(false)
         try {
-            const response = await api.get('/api/v1/admin/reports', { params: { status: activeTab } })
-            setReports(response.data.reports || [])
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to load reports' })
+            const res = await api.get('/api/v1/admin/reports', { params: { status, page } })
+            setData(res.data)
+        } catch {
+            setError(true)
         } finally {
             setLoading(false)
         }
     }
+    useEffect(() => { load() }, [status, page])
 
-    const handleResolve = async (reportId, action) => {
+    const resolve = async (report, action) => {
+        setPending(report.id)
         try {
-            await api.post(`/api/v1/admin/reports/${reportId}/resolve`, { action })
-            addToast({ type: 'success', message: 'Report resolved' })
-            fetchReports()
-            setSelectedReport(null)
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to resolve report' })
+            const res = await api.post(`/api/v1/admin/reports/${report.id}/resolve`, { action })
+            addToast({ type: 'success', message: res.data.message })
+            setConfirm(null)
+            load()
+        } catch (err) {
+            addToast({ type: 'error', message: errorMessage(err) })
+        } finally {
+            setPending(null)
         }
     }
-
-    const handleDismiss = async (reportId) => {
-        try {
-            await api.post(`/api/v1/admin/reports/${reportId}/dismiss`)
-            addToast({ type: 'success', message: 'Report dismissed' })
-            fetchReports()
-            setSelectedReport(null)
-        } catch (error) {
-            addToast({ type: 'error', message: 'Failed to dismiss report' })
-        }
-    }
-
-    const tabs = [
-        { id: 'pending', label: 'Pending' },
-        { id: 'resolved', label: 'Resolved' },
-        { id: 'dismissed', label: 'Dismissed' },
-    ]
 
     return (
-        <div className="p-6 space-y-6">
-            <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
+        <AdminPage title="Reports" description="Review what users have flagged">
+            <Tabs label="Report status" value={status} options={TABS} onChange={(v) => { setStatus(v); setPage(1) }} />
 
-            {/* Tabs */}
-            <div className="flex gap-2 border-b">
-                {tabs.map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${activeTab === tab.id ? 'border-primary-500 text-primary-600' : 'border-transparent text-gray-500'}`}>
-                        {tab.label}
-                    </button>
-                ))}
-            </div>
-
-            {/* Reports List */}
-            <div className="space-y-3">
+            <Panel padded={false}>
                 {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-xl" />)
-                ) : reports.length > 0 ? (
-                    reports.map(report => (
-                        <div key={report.id} className="card" onClick={() => setSelectedReport(report)}>
-                            <div className="flex items-start gap-4">
-                                <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-xl">
-                                    {reportTypes[report.report_type]?.icon || '🚩'}
-                                </div>
-                                <div className="flex-1">
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h3 className="font-medium text-gray-900">
-                                            {reportTypes[report.report_type]?.label || 'Report'}: {report.reported_item_name || `#${report.reported_id}`}
-                                        </h3>
-                                        <span className={`text-xs px-2 py-1 rounded-full ${report.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                                            report.status === 'resolved' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                                            }`}>
-                                            {report.status}
-                                        </span>
-                                    </div>
-                                    <p className="text-sm text-gray-600 line-clamp-2">{report.reason}</p>
-                                    <p className="text-xs text-gray-400 mt-2">
-                                        Reported by: {report.reporter?.first_name} {report.reporter?.last_name} • {new Date(report.created_at).toLocaleDateString()}
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-                    ))
+                    <SkeletonRows rows={4} />
+                ) : error ? (
+                    <ErrorState onRetry={load} />
+                ) : data.reports.length === 0 ? (
+                    <EmptyState icon={Flag} title={status === 'pending' ? 'No reports to review' : 'Nothing here'}
+                        message={status === 'pending' ? 'New reports from users will appear here.' : undefined} />
                 ) : (
-                    <div className="text-center py-12">
-                        <span className="text-5xl block mb-3">🚩</span>
-                        <p className="text-gray-500">No {activeTab} reports</p>
-                    </div>
+                    <ul className="divide-y divide-line">
+                        {data.reports.map((r) => {
+                            const isProduct = r.entity_type === 'product'
+                            const TargetIcon = isProduct ? Package : User
+                            return (
+                                <li key={r.id} className="space-y-3 p-4 sm:p-5">
+                                    <div className="flex flex-wrap items-start justify-between gap-3">
+                                        <div className="flex min-w-0 items-start gap-3">
+                                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-surface-muted text-fg-muted">
+                                                <TargetIcon size={18} aria-hidden />
+                                            </span>
+                                            <div className="min-w-0">
+                                                <p className="text-xs text-fg-subtle">{isProduct ? 'Listing' : 'User'} · reported {timeAgo(r.created_at)} by {fullName(r.reporter)}</p>
+                                                <Link to={isProduct ? `/product/${r.entity_id}` : `/user/${r.entity_id}`} target="_blank"
+                                                    className="inline-flex max-w-full items-center gap-1 font-medium text-fg hover:underline">
+                                                    <span className="truncate">{r.target.name}</span><ExternalLink size={12} aria-hidden className="shrink-0 text-fg-subtle" />
+                                                </Link>
+                                            </div>
+                                        </div>
+                                        {!r.target.is_active && <Badge tone="danger" dot>{isProduct ? 'Already removed' : 'Already suspended'}</Badge>}
+                                    </div>
+                                    <div className="rounded-md bg-surface-muted p-3 text-sm">
+                                        <p className="font-medium text-fg">{r.reason}</p>
+                                        {r.description && <p className="mt-1 text-fg-muted">{r.description}</p>}
+                                    </div>
+                                    {r.status === 'pending' ? (
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button variant="secondary" size="sm" icon={Check} loading={pending === r.id && !confirm} onClick={() => resolve(r, 'dismiss')}>
+                                                Dismiss
+                                            </Button>
+                                            {isProduct && r.target.is_active && (
+                                                <Button variant="secondary" size="sm" icon={Trash2} onClick={() => setConfirm({ report: r, action: 'remove_listing' })}>
+                                                    Remove listing
+                                                </Button>
+                                            )}
+                                            {(isSuper || r.target.owner_role === 'user') && (
+                                                <Button variant="danger-ghost" size="sm" icon={Ban} onClick={() => setConfirm({ report: r, action: 'suspend_user' })}>
+                                                    Suspend {isProduct ? 'seller' : 'user'}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ) : r.admin_notes ? (
+                                        <p className="text-xs text-fg-subtle">Note: {r.admin_notes}</p>
+                                    ) : null}
+                                </li>
+                            )
+                        })}
+                    </ul>
                 )}
-            </div>
+                <Pager page={page} pages={data.pagination.pages} total={data.pagination.total} onChange={setPage} />
+            </Panel>
 
-            {/* Report Detail Modal */}
-            {selectedReport && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-                    <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-                        <h3 className="text-lg font-bold mb-4">Report Details</h3>
-                        <div className="space-y-4">
-                            <div>
-                                <label className="text-sm text-gray-500">Type</label>
-                                <p className="font-medium">{reportTypes[selectedReport.report_type]?.label}</p>
-                            </div>
-                            <div>
-                                <label className="text-sm text-gray-500">Reason</label>
-                                <p className="text-gray-900">{selectedReport.reason}</p>
-                            </div>
-                            {selectedReport.description && (
-                                <div>
-                                    <label className="text-sm text-gray-500">Description</label>
-                                    <p className="text-gray-600">{selectedReport.description}</p>
-                                </div>
-                            )}
-                            <div>
-                                <label className="text-sm text-gray-500">Reporter</label>
-                                <p className="font-medium">{selectedReport.reporter?.first_name} {selectedReport.reporter?.last_name}</p>
-                            </div>
-
-                            {selectedReport.status === 'pending' && (
-                                <div className="flex gap-2 pt-4 border-t">
-                                    <button onClick={() => handleDismiss(selectedReport.id)} className="btn-secondary flex-1">Dismiss</button>
-                                    <button onClick={() => handleResolve(selectedReport.id, 'warn')} className="bg-yellow-500 text-white px-4 py-2 rounded-xl flex-1">Warn</button>
-                                    <button onClick={() => handleResolve(selectedReport.id, 'remove')} className="bg-red-500 text-white px-4 py-2 rounded-xl flex-1">Remove</button>
-                                </div>
-                            )}
-                        </div>
-                        <button onClick={() => setSelectedReport(null)} className="w-full mt-4 btn-secondary">Close</button>
-                    </div>
-                </div>
-            )}
-        </div>
+            <ConfirmDialog
+                open={!!confirm}
+                title={confirm && ACTIONS[confirm.action].title}
+                message={confirm && ACTIONS[confirm.action].message}
+                confirmLabel={confirm && ACTIONS[confirm.action].label}
+                danger
+                loading={pending === confirm?.report.id}
+                onConfirm={() => resolve(confirm.report, confirm.action)}
+                onClose={() => setConfirm(null)}
+            />
+        </AdminPage>
     )
 }

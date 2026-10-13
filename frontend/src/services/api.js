@@ -1,87 +1,70 @@
 import axios from 'axios'
+import { API_URL } from '../config'
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000',
+    baseURL: API_URL,
     timeout: 30000,
-    headers: {
-        'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
 })
 
-// Request interceptor to add auth token
-api.interceptors.request.use(
-    (config) => {
-        // First try the in-memory token
-        let token = api.authToken
+// The auth store plugs in here (see store/authStore.js) so tokens have one source of truth
+let auth = {
+    getAccessToken: () => null,
+    getRefreshToken: () => null,
+    onRefreshed: () => {},
+    onAuthFailed: () => {},
+}
 
-        // If not set, try to get from localStorage (fallback)
-        if (!token) {
-            try {
-                const stored = localStorage.getItem('maumart-auth')
-                if (stored) {
-                    const { state } = JSON.parse(stored)
-                    token = state?.accessToken
-                    // Also set it in memory for future requests
-                    if (token) {
-                        api.authToken = token
-                    }
-                }
-            } catch (e) {
-                console.error('Failed to get token from storage:', e)
-            }
-        }
+api.configureAuth = (handlers) => {
+    auth = { ...auth, ...handlers }
+}
 
-        console.log('[API Request]', config.method?.toUpperCase(), config.url, '- Token:', token ? token.substring(0, 20) + '...' : 'NONE')
+api.interceptors.request.use((config) => {
+    const token = auth.getAccessToken()
+    if (token && !config.headers.Authorization) {
+        config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
+})
 
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`
-        }
-        return config
-    },
-    (error) => Promise.reject(error)
-)
+// Share one refresh between requests that fail at the same time
+let refreshPromise = null
 
-// Response interceptor for error handling and token refresh
+async function refreshAccessToken() {
+    const refreshToken = auth.getRefreshToken()
+    if (!refreshToken) throw new Error('No refresh token')
+
+    const response = await axios.post(`${API_URL}/api/v1/auth/refresh`, {}, {
+        headers: { Authorization: `Bearer ${refreshToken}` },
+    })
+    const { access_token } = response.data
+    auth.onRefreshed(access_token)
+    return access_token
+}
+
 api.interceptors.response.use(
     (response) => response,
     async (error) => {
-        const originalRequest = error.config
+        const original = error.config
+        const isAuthCall = original?.url?.includes('/api/v1/auth/')
 
-        // Handle 401 errors (token expired)
-        if (error.response?.status === 401 && !originalRequest._retry) {
-            originalRequest._retry = true
-
+        if (error.response?.status === 401 && original && !original._retry && !isAuthCall && auth.getRefreshToken()) {
+            original._retry = true
             try {
-                // Try to refresh token
-                const refreshToken = localStorage.getItem('maumart-auth')
-                    ? JSON.parse(localStorage.getItem('maumart-auth')).state?.refreshToken
-                    : null
-
-                if (refreshToken) {
-                    const response = await axios.post(`${api.defaults.baseURL}/api/v1/auth/refresh`, {}, {
-                        headers: {
-                            'Authorization': `Bearer ${refreshToken}`
-                        }
-                    })
-
-                    const { access_token } = response.data
-                    api.setAuthToken(access_token)
-
-                    // Update stored token
-                    const stored = JSON.parse(localStorage.getItem('maumart-auth'))
-                    stored.state.accessToken = access_token
-                    localStorage.setItem('maumart-auth', JSON.stringify(stored))
-
-                    // Retry original request
-                    originalRequest.headers.Authorization = `Bearer ${access_token}`
-                    return api(originalRequest)
-                }
+                refreshPromise = refreshPromise || refreshAccessToken()
+                const token = await refreshPromise
+                original.headers.Authorization = `Bearer ${token}`
+                return api(original)
             } catch (refreshError) {
-                // Refresh failed, logout user
-                localStorage.removeItem('maumart-auth')
-                // window.location.href = '/login'
-                console.error('Refresh token failed - Stopped redirect for debugging')
-                return Promise.reject(refreshError)
+                auth.onAuthFailed()
+                // Session is over; public reads still work without a token
+                if (original.method === 'get') {
+                    delete original.headers.Authorization
+                    return api(original)
+                }
+                return Promise.reject(error)
+            } finally {
+                refreshPromise = null
             }
         }
 
@@ -89,22 +72,8 @@ api.interceptors.response.use(
     }
 )
 
-// Method to set auth token
-api.setAuthToken = (token) => {
-    api.authToken = token
-}
-
-// Initialize token from storage
-const stored = localStorage.getItem('maumart-auth')
-if (stored) {
-    try {
-        const { state } = JSON.parse(stored)
-        if (state?.accessToken) {
-            api.setAuthToken(state.accessToken)
-        }
-    } catch (e) {
-        console.error('Failed to parse stored auth:', e)
-    }
-}
+// Pull a readable message out of an API error
+export const errorMessage = (error, fallback = 'Something went wrong') =>
+    error?.response?.data?.message || fallback
 
 export default api

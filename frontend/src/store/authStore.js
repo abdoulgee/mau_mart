@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import api from '../services/api'
+import api, { errorMessage } from '../services/api'
 
 const useAuthStore = create(
     persist(
@@ -13,208 +13,96 @@ const useAuthStore = create(
             error: null,
             pendingVerificationEmail: null,
 
-            // Set user data after login
             setAuth: (user, accessToken, refreshToken) => {
-                set({
-                    user,
-                    accessToken,
-                    refreshToken,
-                    isAuthenticated: true,
-                    error: null,
-                })
-                api.setAuthToken(accessToken)
+                set({ user, accessToken, refreshToken, isAuthenticated: true })
             },
 
-            // Update user profile
             updateUser: (userData) => {
-                set((state) => ({
-                    user: { ...state.user, ...userData },
-                }))
+                set((state) => ({ user: { ...state.user, ...userData } }))
             },
 
-            // Set pending verification email for OTP flow
-            setPendingVerification: (email) => {
-                set({ pendingVerificationEmail: email })
+            setPendingVerification: (email) => set({ pendingVerificationEmail: email }),
+
+            // Wraps a request with the loading flag and a { success, error } result
+            _run: async (request) => {
+                set({ isLoading: true, error: null })
+                try {
+                    return { success: true, ...(await request()) }
+                } catch (error) {
+                    const message = errorMessage(error)
+                    set({ error: message })
+                    return { success: false, error: message, data: error.response?.data }
+                } finally {
+                    set({ isLoading: false })
+                }
             },
 
-            // Clear pending verification
-            clearPendingVerification: () => {
-                set({ pendingVerificationEmail: null })
-            },
-
-            // Login action
             login: async (credentials) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const response = await api.post('/api/v1/auth/login', credentials)
-                    const { user, access_token, refresh_token } = response.data
-                    get().setAuth(user, access_token, refresh_token)
-                    return { success: true, user }
-                } catch (error) {
-                    const message = error.response?.data?.message || 'Login failed'
-                    const needsVerification = error.response?.data?.needs_verification
-                    // Use email from response, or fall back to the login credential
-                    const email = error.response?.data?.email || credentials.email
-
-                    if (needsVerification) {
-                        set({ pendingVerificationEmail: email, isLoading: false })
-                        return { success: false, needsVerification: true, email, error: message }
-                    }
-
-                    set({ error: message, isLoading: false })
-                    return { success: false, error: message }
-                } finally {
-                    set({ isLoading: false })
-                }
-            },
-
-            // Register action
-            register: async (userData) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const response = await api.post('/api/v1/auth/register', userData)
-                    set({ pendingVerificationEmail: userData.email })
-                    return { success: true, message: response.data.message }
-                } catch (error) {
-                    const message = error.response?.data?.message || 'Registration failed'
-                    set({ error: message, isLoading: false })
-                    return { success: false, error: message }
-                } finally {
-                    set({ isLoading: false })
-                }
-            },
-
-            // Verify OTP
-            verifyOtp: async (email, otp) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const response = await api.post('/api/v1/auth/verify-otp', { email, otp })
-                    set({ pendingVerificationEmail: null })
-                    return { success: true, message: response.data.message }
-                } catch (error) {
-                    const message = error.response?.data?.message || 'Verification failed'
-                    set({ error: message, isLoading: false })
-                    return { success: false, error: message }
-                } finally {
-                    set({ isLoading: false })
-                }
-            },
-
-            // Resend OTP
-            resendOtp: async (email) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const response = await api.post('/api/v1/auth/resend-otp', { email })
-                    return { success: true, message: response.data.message }
-                } catch (error) {
-                    const message = error.response?.data?.message || 'Failed to resend OTP'
-                    set({ error: message, isLoading: false })
-                    return { success: false, error: message }
-                } finally {
-                    set({ isLoading: false })
-                }
-            },
-
-            // Forgot password
-            forgotPassword: async (email) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const response = await api.post('/api/v1/auth/forgot-password', { email })
+                const result = await get()._run(async () => {
+                    const { data } = await api.post('/api/v1/auth/login', credentials)
+                    get().setAuth(data.user, data.access_token, data.refresh_token)
+                    return { user: data.user }
+                })
+                if (!result.success && result.data?.needs_verification) {
+                    const email = result.data.email || credentials.email
                     set({ pendingVerificationEmail: email })
-                    return { success: true, message: response.data.message }
-                } catch (error) {
-                    const message = error.response?.data?.message || 'Request failed'
-                    set({ error: message, isLoading: false })
-                    return { success: false, error: message }
-                } finally {
-                    set({ isLoading: false })
+                    return { ...result, needsVerification: true, email }
                 }
+                return result
             },
 
-            // Reset password
-            resetPassword: async (email, otp, newPassword) => {
-                set({ isLoading: true, error: null })
-                try {
-                    const response = await api.post('/api/v1/auth/reset-password', {
-                        email,
-                        otp,
-                        new_password: newPassword,
-                    })
-                    set({ pendingVerificationEmail: null })
-                    return { success: true, message: response.data.message }
-                } catch (error) {
-                    const message = error.response?.data?.message || 'Password reset failed'
-                    set({ error: message, isLoading: false })
-                    return { success: false, error: message }
-                } finally {
-                    set({ isLoading: false })
-                }
-            },
+            register: (userData) => get()._run(async () => {
+                const { data } = await api.post('/api/v1/auth/register', userData)
+                set({ pendingVerificationEmail: data.auto_verified ? null : userData.email })
+                return { message: data.message, autoVerified: !!data.auto_verified }
+            }),
 
-            // Refresh token
-            refreshAccessToken: async () => {
-                const { refreshToken } = get()
-                if (!refreshToken) return false
+            verifyOtp: (email, otp) => get()._run(async () => {
+                const { data } = await api.post('/api/v1/auth/verify-otp', { email, otp })
+                set({ pendingVerificationEmail: null })
+                return { message: data.message }
+            }),
 
-                try {
-                    // Send refresh token in Authorization header as required by Flask-JWT-Extended
-                    const response = await api.post('/api/v1/auth/refresh', {}, {
-                        headers: {
-                            'Authorization': `Bearer ${refreshToken}`
-                        }
-                    })
-                    const { access_token } = response.data
-                    set({
-                        accessToken: access_token,
-                        // Keep the same refresh token
-                    })
-                    api.setAuthToken(access_token)
-                    return true
-                } catch (error) {
-                    get().logout()
-                    return false
-                }
-            },
+            resendOtp: (email) => get()._run(async () => {
+                const { data } = await api.post('/api/v1/auth/resend-otp', { email })
+                return { message: data.message }
+            }),
 
-            // Logout
+            forgotPassword: (email) => get()._run(async () => {
+                const { data } = await api.post('/api/v1/auth/forgot-password', { email })
+                return { message: data.message }
+            }),
+
+            resetPassword: (email, otp, newPassword) => get()._run(async () => {
+                const { data } = await api.post('/api/v1/auth/reset-password', { email, otp, new_password: newPassword })
+                return { message: data.message }
+            }),
+
             logout: () => {
                 set({
                     user: null,
                     accessToken: null,
                     refreshToken: null,
                     isAuthenticated: false,
-                    error: null,
                     pendingVerificationEmail: null,
                 })
-                api.setAuthToken(null)
             },
 
-            // Refresh user profile data
+            // Re-sync the stored user with the server (role changes, suspension, etc.)
             fetchProfile: async () => {
                 try {
-                    const response = await api.get('/api/v1/users/profile')
-                    const { user } = response.data
-                    set({ user })
-                    return { success: true, user }
-                } catch (error) {
-                    console.error('Failed to fetch profile:', error)
-                    return { success: false, error }
+                    const { data } = await api.get('/api/v1/users/profile')
+                    set({ user: data.user })
+                    return data.user
+                } catch {
+                    return null
                 }
             },
 
-            // Clear error
-            clearError: () => {
-                set({ error: null })
-            },
+            clearError: () => set({ error: null }),
 
-            // Check if user has a specific role
-            hasRole: (role) => {
-                const { user } = get()
-                if (!user) return false
-                if (role === 'admin') return user.role === 'admin' || user.role === 'super_admin' || user.role === 'support_admin'
-                if (role === 'seller') return user.is_seller || user.role === 'admin' || user.role === 'super_admin' || user.role === 'support_admin'
-                return true
-            },
+            isAdmin: () => ['admin', 'super_admin'].includes(get().user?.role),
+            isSuperAdmin: () => get().user?.role === 'super_admin',
         }),
         {
             name: 'maumart-auth',
@@ -223,9 +111,17 @@ const useAuthStore = create(
                 accessToken: state.accessToken,
                 refreshToken: state.refreshToken,
                 isAuthenticated: state.isAuthenticated,
+                pendingVerificationEmail: state.pendingVerificationEmail,
             }),
         }
     )
 )
+
+api.configureAuth({
+    getAccessToken: () => useAuthStore.getState().accessToken,
+    getRefreshToken: () => useAuthStore.getState().refreshToken,
+    onRefreshed: (accessToken) => useAuthStore.setState({ accessToken }),
+    onAuthFailed: () => useAuthStore.getState().logout(),
+})
 
 export default useAuthStore

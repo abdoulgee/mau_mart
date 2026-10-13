@@ -1,126 +1,44 @@
-from flask import Blueprint, request, jsonify, send_from_directory, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
-import os
+from flask import Blueprint, request, jsonify, send_from_directory, current_app, abort
+from flask_jwt_extended import jwt_required
 from werkzeug.utils import secure_filename
+from datetime import datetime
+import os
+
 from app.services.storage import upload_file
+from app.utils import current_user_id, allowed_image, super_admin_required
 
 bp = Blueprint('uploads', __name__)
 
-
-def allowed_file(filename, allowed_extensions):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in allowed_extensions
-
-
-@bp.route('/users/<filename>')
-def serve_user_media(filename):
-    """Serve user profile pictures (local fallback only)"""
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'users')
-    return send_from_directory(upload_folder, filename)
+# Folders served from local disk when Supabase storage isn't configured
+SERVED_FOLDERS = {'products', 'chat', 'users', 'ads', 'site'}
 
 
-@bp.route('/products/<filename>')
-def serve_product_media(filename):
-    """Serve product media files (local fallback only)"""
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'products')
-    return send_from_directory(upload_folder, filename)
+@bp.route('/<folder>/<filename>')
+def serve_media(folder, filename):
+    if folder not in SERVED_FOLDERS:
+        abort(404)
+    return send_from_directory(os.path.join(current_app.config['UPLOAD_FOLDER'], folder), filename)
 
 
-@bp.route('/stores/<filename>')
-def serve_store_media(filename):
-    """Serve store media files (local fallback only)"""
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'stores')
-    return send_from_directory(upload_folder, filename)
+def _upload(folder, prefix):
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'message': 'No file provided'}), 400
+    if not allowed_image(file.filename):
+        return jsonify({'message': 'Only image files are allowed'}), 400
 
-
-@bp.route('/chat/<filename>')
-def serve_chat_media(filename):
-    """Serve chat media files (local fallback only)"""
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'chat')
-    return send_from_directory(upload_folder, filename)
-
-
-@bp.route('/reviews/<filename>')
-def serve_review_media(filename):
-    """Serve review media files (local fallback only)"""
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'reviews')
-    return send_from_directory(upload_folder, filename)
-
-
-@bp.route('/ads/<filename>')
-def serve_ad_media(filename):
-    """Serve ad banner files (local fallback only)"""
-    upload_folder = os.path.join(current_app.config['UPLOAD_FOLDER'], 'ads')
-    return send_from_directory(upload_folder, filename)
+    filename = f"{prefix}_{int(datetime.utcnow().timestamp() * 1000)}_{secure_filename(file.filename)}"
+    return jsonify({'url': upload_file(file, filename, folder=folder)}), 201
 
 
 @bp.route('/chat', methods=['POST'])
 @jwt_required()
-def upload_chat_media():
-    """Upload media for chat"""
-    if 'file' not in request.files:
-        return jsonify({'message': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'message': 'No file selected'}), 400
-    
-    allowed = current_app.config['ALLOWED_IMAGE_EXTENSIONS'] | current_app.config['ALLOWED_VIDEO_EXTENSIONS']
-    
-    if not allowed_file(file.filename, allowed):
-        return jsonify({'message': 'File type not allowed'}), 400
-    
-    user_id = int(get_jwt_identity())
-    filename = f"{user_id}_{int(os.times()[4] * 1000)}_{secure_filename(file.filename)}"
-    
-    url = upload_file(file, filename, folder='chat')
-    
-    return jsonify({'url': url}), 201
+def upload_chat_image():
+    return _upload('chat', str(current_user_id()))
 
 
-@bp.route('/review', methods=['POST'])
-@jwt_required()
-def upload_review_media():
-    """Upload media for review"""
-    if 'file' not in request.files:
-        return jsonify({'message': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'message': 'No file selected'}), 400
-    
-    allowed = current_app.config['ALLOWED_IMAGE_EXTENSIONS'] | current_app.config['ALLOWED_VIDEO_EXTENSIONS']
-    
-    if not allowed_file(file.filename, allowed):
-        return jsonify({'message': 'File type not allowed'}), 400
-    
-    user_id = int(get_jwt_identity())
-    filename = f"review_{user_id}_{int(os.times()[4] * 1000)}_{secure_filename(file.filename)}"
-    
-    url = upload_file(file, filename, folder='reviews')
-    
-    return jsonify({'url': url}), 201
-
-
-@bp.route('/store', methods=['POST'])
-@jwt_required()
-def upload_store_media():
-    """Upload store logo/banner"""
-    if 'file' not in request.files:
-        return jsonify({'message': 'No file provided'}), 400
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'message': 'No file selected'}), 400
-    
-    allowed = current_app.config['ALLOWED_IMAGE_EXTENSIONS']
-    
-    if not allowed_file(file.filename, allowed):
-        return jsonify({'message': 'Only images allowed'}), 400
-    
-    user_id = int(get_jwt_identity())
-    media_type = request.form.get('type', 'logo')  # logo or banner
-    filename = f"store_{user_id}_{media_type}_{secure_filename(file.filename)}"
-    
-    url = upload_file(file, filename, folder='stores')
-    
-    return jsonify({'url': url}), 201
+@bp.route('/site', methods=['POST'])
+@super_admin_required
+def upload_site_image():
+    """Super admin uploads (site logo, home intro background)"""
+    return _upload('site', 'site')

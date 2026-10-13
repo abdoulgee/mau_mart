@@ -5,41 +5,28 @@ const useSettingsStore = create((set, get) => ({
     settings: {
         site_name: 'MAU MART',
         site_tagline: 'Campus Marketplace',
+        site_logo_url: '',
         support_email: '',
-        support_phone: '',
-        currency: 'NGN',
-        currency_symbol: '₦',
-        transaction_fee_percent: 0,
-        min_order_amount: 0,
-        max_product_images: 4,
+        admin_whatsapp: '',
         require_email_verification: true,
         allow_guest_browsing: true,
         maintenance_mode: false,
-        terms_url: '',
-        privacy_url: '',
+        hero_title: 'Buy and sell on campus',
+        hero_message: "Post what you don't need, find what you do, and meet the seller in person. Chat in the app or on WhatsApp.",
+        hero_image_url: '',
     },
     loaded: false,
 
     fetchSettings: async () => {
         try {
-            const response = await api.get('/api/v1/settings')
-            if (response.data.settings && Object.keys(response.data.settings).length > 0) {
-                const merged = { ...get().settings, ...response.data.settings }
-                set({ settings: merged, loaded: true })
-                // Persist to localStorage so Header/other components can read logo, name, etc.
-                localStorage.setItem('app-settings', JSON.stringify(merged))
-            } else {
-                set({ loaded: true })
-            }
+            const { data } = await api.get('/api/v1/settings')
+            const merged = { ...get().settings, ...(data.settings || {}) }
+            set({ settings: merged, loaded: true })
+            // Headers read the logo and name from here before the store loads
+            localStorage.setItem('app-settings', JSON.stringify(merged))
         } catch {
             set({ loaded: true })
         }
-    },
-
-    // Helper: format price with currency symbol
-    formatPrice: (price) => {
-        const { settings } = get()
-        return `${settings.currency_symbol}${Number(price).toLocaleString()}`
     },
 }))
 

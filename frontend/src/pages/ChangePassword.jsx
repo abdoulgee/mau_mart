@@ -1,98 +1,55 @@
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Header } from '../components/navigation/Header'
+import Page from '../components/navigation/Page'
+import Button from '../components/ui/Button'
+import Panel from '../components/ui/Panel'
+import { Alert } from '../components/ui/Feedback'
+import { PasswordField } from '../components/ui/Field'
+import useForm, { rules } from '../hooks/useForm'
 import useUIStore from '../store/uiStore'
-import api from '../services/api'
+import api, { errorMessage } from '../services/api'
+
+const schema = {
+    current_password: [rules.required('Enter your current password')],
+    new_password: [rules.required('Enter a new password'), rules.minLength(8, 'Use at least 8 characters')],
+    confirm_password: [rules.required('Confirm your new password'), rules.matches('new_password', "Passwords don't match")],
+}
 
 export default function ChangePassword() {
-    const { addToast } = useUIStore()
     const navigate = useNavigate()
-    const [loading, setLoading] = useState(false)
-    const [formData, setFormData] = useState({
-        current_password: '',
-        new_password: '',
-        confirm_password: '',
-    })
+    const { addToast } = useUIStore()
+    const form = useForm({ current_password: '', new_password: '', confirm_password: '' }, schema)
 
-    const handleChange = (e) => {
-        setFormData(prev => ({
-            ...prev,
-            [e.target.name]: e.target.value
-        }))
-    }
-
-    const handleSubmit = async (e) => {
-        e.preventDefault()
-
-        if (formData.new_password !== formData.confirm_password) {
-            addToast({ type: 'error', message: 'Passwords do not match' })
-            return
-        }
-
-        setLoading(true)
+    const submit = form.handleSubmit(async ({ current_password, new_password }) => {
         try {
-            await api.put('/api/v1/users/password', {
-                current_password: formData.current_password,
-                new_password: formData.new_password
-            })
-            addToast({ type: 'success', message: 'Password changed successfully' })
+            await api.post('/api/v1/users/change-password', { current_password, new_password })
+            addToast({ type: 'success', message: 'Password changed' })
             navigate('/profile')
         } catch (error) {
-            addToast({ type: 'error', message: error.response?.data?.message || 'Failed to change password' })
-        } finally {
-            setLoading(false)
+            const message = errorMessage(error, 'Could not change your password')
+            if (message.toLowerCase().includes('current password')) {
+                form.setErrors((e) => ({ ...e, current_password: message }))
+                return
+            }
+            throw new Error(message)
         }
-    }
+    })
 
     return (
-        <div className="min-h-screen bg-surface-50 pb-20">
-            <Header title="Change Password" showBack />
-            <div className="p-4">
-                <form onSubmit={handleSubmit} className="card space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Current Password</label>
-                        <input
-                            type="password"
-                            name="current_password"
-                            value={formData.current_password}
-                            onChange={handleChange}
-                            className="input"
-                            required
-                        />
+        <Page title="Change password" back width="narrow">
+            <form onSubmit={submit} noValidate className="space-y-6">
+                {form.formError && <Alert tone="danger">{form.formError}</Alert>}
+                <Panel>
+                    <div className="space-y-5">
+                        <PasswordField label="Current password" required autoComplete="current-password" {...form.field('current_password')} />
+                        <PasswordField label="New password" required autoComplete="new-password" hint="At least 8 characters" {...form.field('new_password')} />
+                        <PasswordField label="Confirm new password" required autoComplete="new-password" {...form.field('confirm_password')} />
                     </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">New Password</label>
-                        <input
-                            type="password"
-                            name="new_password"
-                            value={formData.new_password}
-                            onChange={handleChange}
-                            className="input"
-                            required
-                            minLength={6}
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New Password</label>
-                        <input
-                            type="password"
-                            name="confirm_password"
-                            value={formData.confirm_password}
-                            onChange={handleChange}
-                            className="input"
-                            required
-                            minLength={6}
-                        />
-                    </div>
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="btn-primary w-full"
-                    >
-                        {loading ? 'Changing...' : 'Change Password'}
-                    </button>
-                </form>
-            </div>
-        </div>
+                </Panel>
+                <div className="flex justify-end gap-2">
+                    <Button variant="secondary" onClick={() => navigate(-1)}>Cancel</Button>
+                    <Button type="submit" loading={form.submitting}>Update password</Button>
+                </div>
+            </form>
+        </Page>
     )
 }

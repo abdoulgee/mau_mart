@@ -31,7 +31,7 @@ class Config:
     UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads')
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16 MB max
     ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
-    ALLOWED_VIDEO_EXTENSIONS = {'mp4', 'webm', 'mov'}
+    MAX_PRODUCT_IMAGES = 4
     
     # SMTP (for email)
     MAIL_SERVER = os.getenv('MAIL_SERVER', 'smtp.gmail.com')
@@ -43,6 +43,10 @@ class Config:
     
     # OTP
     OTP_EXPIRY_MINUTES = 10
+    OTP_MAX_ATTEMPTS = 5
+
+    # Real-time
+    SOCKETIO_ASYNC_MODE = os.getenv('SOCKETIO_ASYNC_MODE', 'eventlet')
     
     # App settings
     APP_NAME = 'MAU MART'
@@ -57,6 +61,7 @@ class DevelopmentConfig(Config):
 class ProductionConfig(Config):
     """Production configuration"""
     DEBUG = False
+    IS_PRODUCTION = True
     # Use more secure settings in production
     JWT_COOKIE_SECURE = True
 
@@ -65,6 +70,8 @@ class TestingConfig(Config):
     """Testing configuration"""
     TESTING = True
     SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SQLALCHEMY_ENGINE_OPTIONS = {}
+    SOCKETIO_ASYNC_MODE = 'threading'
 
 
 config = {

@@ -1,459 +1,302 @@
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import jwt_required, get_jwt_identity
-from datetime import datetime
-import os
-import re
+from flask_jwt_extended import jwt_required
 from werkzeug.utils import secure_filename
-from app.services.storage import upload_file
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from app import db
-from app.models import Product, ProductMedia, Store, Category, User, ProductType, Review, Order, OrderStatus, AdsBanner
+from app.models import Product, ProductMedia, Category, User, AdsBanner, ProductCondition
+from app.services.storage import upload_file
+from app.utils import current_user_id, optional_user_id, page_args, pagination_meta, allowed_image
 
 bp = Blueprint('products', __name__)
 
+CONDITIONS = {c.value for c in ProductCondition}
+SORTS = {
+    'newest': Product.created_at.desc(),
+    'price_low': Product.price.asc(),
+    'price_high': Product.price.desc(),
+}
 
-def slugify(text):
-    """Convert text to URL-friendly slug"""
-    text = text.lower().strip()
-    text = re.sub(r'[^\w\s-]', '', text)
-    text = re.sub(r'[-\s]+', '-', text)
-    return text
+
+def _visible_products():
+    """Listings anyone can browse: not deleted, seller not suspended"""
+    return Product.query.join(User, Product.user_id == User.id).filter(
+        Product.is_active == True,  # noqa: E712
+        User.is_active == True,  # noqa: E712
+    )
+
+
+def _parse_price(value):
+    try:
+        price = Decimal(str(value).replace(',', '').strip())
+    except (InvalidOperation, AttributeError):
+        return None
+    return price if price >= 0 else None
+
+
+def _save_images(product, files):
+    """Upload new photos after the existing ones; returns an error message or None"""
+    max_images = current_app.config['MAX_PRODUCT_IMAGES']
+    files = [f for f in files if f and f.filename]
+    if len(product.media) + len(files) > max_images:
+        return f'A listing can have at most {max_images} photos'
+    for f in files:
+        if not allowed_image(f.filename):
+            return 'Only image files (png, jpg, jpeg, gif, webp) are allowed'
+
+    start_index = max((m.sort_order for m in product.media), default=-1) + 1
+    for i, f in enumerate(files):
+        order = start_index + i
+        filename = f"{product.id}_{int(datetime.utcnow().timestamp())}_{order}_{secure_filename(f.filename)}"
+        url = upload_file(f, filename, folder='products')
+        db.session.add(ProductMedia(product_id=product.id, url=url, sort_order=order))
+    return None
+
+
+def _apply_fields(product, form, creating):
+    """Validate and copy editable fields from the form. Returns an error message or None."""
+    if creating or 'title' in form:
+        title = (form.get('title') or '').strip()
+        if not title:
+            return 'Title is required'
+        product.title = title[:200]
+
+    if creating or 'price' in form:
+        price = _parse_price(form.get('price'))
+        if price is None:
+            return 'Enter a valid price'
+        product.price = price
+
+    if 'description' in form:
+        product.description = (form.get('description') or '').strip()
+
+    if 'location' in form:
+        product.location = (form.get('location') or '').strip()[:200] or None
+
+    if 'condition' in form:
+        condition = form.get('condition')
+        if condition not in CONDITIONS:
+            return 'Invalid condition'
+        product.condition = condition
+
+    if 'category_id' in form:
+        category_id = form.get('category_id')
+        if category_id:
+            category = db.session.get(Category, int(category_id)) if str(category_id).isdigit() else None
+            if not category or not category.is_active:
+                return 'Invalid category'
+            product.category_id = category.id
+        else:
+            product.category_id = None
+    return None
+
+
+def _get_owned_product(product_id):
+    """Fetch an active product owned by the current user, or an error response"""
+    product = db.session.get(Product, product_id)
+    if not product or not product.is_active:
+        return None, (jsonify({'message': 'Listing not found'}), 404)
+    if product.user_id != current_user_id():
+        return None, (jsonify({'message': 'You can only change your own listings'}), 403)
+    return product, None
 
 
 @bp.route('', methods=['GET'])
-def get_products():
-    """Get all active products with pagination"""
-    page = request.args.get('page', 1, type=int)
-    limit = request.args.get('limit', 20, type=int)
-    product_type = request.args.get('type')
-    
-    query = Product.query.filter_by(is_active=True)
-    
-    if product_type:
-        query = query.filter_by(product_type=product_type)
-    
-    query = query.order_by(Product.created_at.desc())
-    pagination = query.paginate(page=page, per_page=limit, error_out=False)
-    
-    return jsonify({
-        'products': [p.to_dict(include_store=True) for p in pagination.items],
-        'pagination': {
-            'page': page,
-            'limit': limit,
-            'total': pagination.total,
-            'pages': pagination.pages
-        }
-    }), 200
+def list_products():
+    """Browse/search listings.
+    Query: q, category (slug), min_price, max_price, condition, sort (newest|price_low|price_high),
+    include_sold (true|false, default false), page, limit
+    """
+    page, limit = page_args(request)
+    query = _visible_products()
 
+    q = (request.args.get('q') or '').strip()
+    if q:
+        like = f'%{q}%'
+        query = query.outerjoin(Category, Product.category_id == Category.id).filter(
+            db.or_(Product.title.ilike(like), Product.description.ilike(like), Category.name.ilike(like))
+        )
 
-@bp.route('/ads', methods=['GET'])
-def get_ads():
-    """Get active and approved ad banners"""
-    position = request.args.get('position')
-    now = datetime.utcnow()
-    
-    query = AdsBanner.query.filter(
-        AdsBanner.is_active == True,
-        AdsBanner.is_approved == True,
-        AdsBanner.starts_at <= now,
-        AdsBanner.ends_at >= now
-    )
-    
-    if position:
-        query = query.filter_by(position=position)
-    
-    ads = query.order_by(AdsBanner.created_at.desc()).all()
-    
+    category_slug = request.args.get('category')
+    if category_slug:
+        category = Category.query.filter_by(slug=category_slug).first()
+        if not category:
+            return jsonify({'products': [], 'pagination': {'page': page, 'limit': limit, 'total': 0, 'pages': 0}}), 200
+        query = query.filter(Product.category_id == category.id)
+
+    min_price = request.args.get('min_price', type=float)
+    max_price = request.args.get('max_price', type=float)
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
+
+    condition = request.args.get('condition')
+    if condition in CONDITIONS:
+        query = query.filter(Product.condition == condition)
+
+    if request.args.get('include_sold', 'false').lower() != 'true':
+        query = query.filter(Product.is_sold == False)  # noqa: E712
+
+    sort = SORTS.get(request.args.get('sort'), SORTS['newest'])
+    pagination = query.order_by(sort, Product.id.desc()).paginate(page=page, per_page=limit, error_out=False)
+
     return jsonify({
-        'ads': [a.to_dict() for a in ads]
+        'products': [p.to_dict() for p in pagination.items],
+        'pagination': pagination_meta(pagination),
     }), 200
 
 
 @bp.route('/featured', methods=['GET'])
-def get_featured_products():
-    """Get featured products for home page"""
-    limit = request.args.get('limit', 10, type=int)
-    
-    products = Product.query.filter_by(
-        is_active=True, 
-        is_featured=True
+def featured_products():
+    limit = min(request.args.get('limit', 10, type=int), 20)
+    products = _visible_products().filter(
+        Product.is_featured == True,  # noqa: E712
+        Product.is_sold == False,  # noqa: E712
     ).order_by(Product.created_at.desc()).limit(limit).all()
-    
+    return jsonify({'products': [p.to_dict() for p in products]}), 200
+
+
+@bp.route('/ads', methods=['GET'])
+def get_ads():
+    """Active home page banners (admin managed)"""
+    ads = AdsBanner.query.filter_by(is_active=True) \
+        .order_by(AdsBanner.sort_order, AdsBanner.created_at.desc()).all()
+    return jsonify({'ads': [a.to_dict() for a in ads]}), 200
+
+
+@bp.route('/mine', methods=['GET'])
+@jwt_required()
+def my_products():
+    """Current user's listings, including sold ones"""
+    page, limit = page_args(request, max_limit=100)
+    query = Product.query.filter_by(user_id=current_user_id(), is_active=True)
+
+    status = request.args.get('status')
+    if status == 'available':
+        query = query.filter_by(is_sold=False)
+    elif status == 'sold':
+        query = query.filter_by(is_sold=True)
+
+    pagination = query.order_by(Product.created_at.desc()).paginate(page=page, per_page=limit, error_out=False)
     return jsonify({
-        'products': [p.to_dict(include_store=True) for p in products]
-    }), 200
-
-
-@bp.route('/recent', methods=['GET'])
-def get_recent_products():
-    """Get recently added products"""
-    limit = request.args.get('limit', 10, type=int)
-    
-    products = Product.query.filter_by(
-        is_active=True
-    ).order_by(Product.created_at.desc()).limit(limit).all()
-    
-    return jsonify({
-        'products': [p.to_dict(include_store=True) for p in products]
-    }), 200
-
-
-@bp.route('/search', methods=['GET'])
-def search_products():
-    """Search products by title"""
-    query = request.args.get('q', '').strip()
-    page = request.args.get('page', 1, type=int)
-    limit = request.args.get('limit', 20, type=int)
-    
-    if not query:
-        return jsonify({'products': [], 'pagination': {}}), 200
-    
-    products = Product.query.outerjoin(Product.categories).filter(
-        Product.is_active == True,
-        db.or_(
-            Product.title.ilike(f'%{query}%'),
-            Category.name.ilike(f'%{query}%')
-        )
-    ).distinct().order_by(Product.created_at.desc())
-    
-    pagination = products.paginate(page=page, per_page=limit, error_out=False)
-    
-    return jsonify({
-        'products': [p.to_dict(include_store=True) for p in pagination.items],
-        'pagination': {
-            'page': page,
-            'limit': limit,
-            'total': pagination.total,
-            'pages': pagination.pages
-        }
+        'products': [p.to_dict(include_seller=False) for p in pagination.items],
+        'pagination': pagination_meta(pagination),
     }), 200
 
 
 @bp.route('/<int:product_id>', methods=['GET'])
 def get_product(product_id):
-    """Get single product detail"""
-    product = Product.query.get(product_id)
-    
-    if not product or not product.is_active:
-        return jsonify({'message': 'Product not found'}), 404
-    
-    # Increment views
-    product.views += 1
-    db.session.commit()
-    
-    return jsonify({
-        'product': product.to_dict(include_store=True)
-    }), 200
+    product = db.session.get(Product, product_id)
+    if not product or not product.is_active or not product.seller or not product.seller.is_active:
+        return jsonify({'message': 'Listing not found'}), 404
+
+    # Don't count the owner's own visits
+    viewer_id = optional_user_id()
+    if viewer_id != product.user_id:
+        product.views = (product.views or 0) + 1
+        db.session.commit()
+
+    return jsonify({'product': product.to_dict(include_contact=viewer_id is not None)}), 200
 
 
 @bp.route('', methods=['POST'])
 @jwt_required()
 def create_product():
-    """Create a new product (seller only)"""
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    
-    if not user or not user.is_seller:
-        return jsonify({'message': 'You must be a seller to create products'}), 403
-    
-    store = Store.query.filter_by(owner_id=user_id).first()
-    if not store:
-        return jsonify({'message': 'You need a store to create products'}), 403
-    
-    # Handle form data
-    title = request.form.get('title')
-    description = request.form.get('description', '')
-    price = request.form.get('price', type=float)
-    compare_price = request.form.get('compare_price', type=float)
-    product_type = request.form.get('product_type', ProductType.PHYSICAL.value)
-    stock_quantity = request.form.get('stock_quantity', 1, type=int)
-    pickup_location = request.form.get('pickup_location', '')
-    prep_time = request.form.get('prep_time', '')
-    category_ids = request.form.getlist('category_ids')
-    
-    if not title or not price:
-        return jsonify({'message': 'Title and price are required'}), 400
-    
-    # Create product
-    product = Product(
-        store_id=store.id,
-        title=title,
-        slug=slugify(title) + '-' + str(int(datetime.utcnow().timestamp())),
-        description=description,
-        price=price,
-        compare_price=compare_price,
-        product_type=product_type,
-        stock_quantity=stock_quantity,
-        pickup_location=pickup_location,
-        prep_time=prep_time
-    )
-    
-    # Add categories
-    if category_ids:
-        categories = Category.query.filter(Category.id.in_(category_ids)).all()
-        product.categories = categories
-    
+    """Post a listing (multipart form: title, price, description, condition, location, category_id, images[])"""
+    user = db.session.get(User, current_user_id())
+    if not user or not user.is_active:
+        return jsonify({'message': 'Account unavailable'}), 403
+
+    product = Product(user_id=user.id)
+    error = _apply_fields(product, request.form, creating=True)
+    if error:
+        return jsonify({'message': error}), 400
+
+    images = request.files.getlist('images')
+    if not any(f and f.filename for f in images):
+        return jsonify({'message': 'Add at least one photo'}), 400
+
     db.session.add(product)
-    db.session.flush()  # Get the product ID
-    
-    # Handle media uploads
-    media_files = request.files.getlist('media')
-    
-    for i, file in enumerate(media_files[:4]):  # Max 4 media files
-        if file and file.filename:
-            filename = f"{product.id}_{i}_{secure_filename(file.filename)}"
-            url = upload_file(file, filename, folder='products')
-            
-            # Determine media type
-            extension = filename.rsplit('.', 1)[-1].lower()
-            media_type = 'video' if extension in current_app.config.get('ALLOWED_VIDEO_EXTENSIONS', []) else 'image'
-            
-            media = ProductMedia(
-                product_id=product.id,
-                url=url,
-                media_type=media_type,
-                sort_order=i
-            )
-            db.session.add(media)
-    
+    db.session.flush()
+
+    error = _save_images(product, images)
+    if error:
+        db.session.rollback()
+        return jsonify({'message': error}), 400
+
     db.session.commit()
-    
-    return jsonify({
-        'message': 'Product created successfully',
-        'product': product.to_dict()
-    }), 201
+    return jsonify({'message': 'Listing posted', 'product': product.to_dict()}), 201
 
 
 @bp.route('/<int:product_id>', methods=['PUT'])
 @jwt_required()
 def update_product(product_id):
-    """Update a product (owner only)"""
-    user_id = int(get_jwt_identity())
-    product = Product.query.get(product_id)
-    
-    if not product:
-        return jsonify({'message': 'Product not found'}), 404
-    
-    if product.store.owner_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-    
-    # Update fields
-    if 'title' in request.form:
-        product.title = request.form['title']
-    if 'description' in request.form:
-        product.description = request.form['description']
-    if 'price' in request.form:
-        product.price = float(request.form['price'])
-    if 'compare_price' in request.form:
-        product.compare_price = float(request.form['compare_price']) if request.form['compare_price'] else None
-    if 'stock_quantity' in request.form:
-        product.stock_quantity = int(request.form['stock_quantity'])
-    if 'is_in_stock' in request.form:
-        product.is_in_stock = request.form['is_in_stock'].lower() == 'true'
-    if 'pickup_location' in request.form:
-        product.pickup_location = request.form['pickup_location']
-    if 'prep_time' in request.form:
-        product.prep_time = request.form['prep_time']
-    
-    # Update categories
-    category_ids = request.form.getlist('category_ids')
-    if category_ids:
-        categories = Category.query.filter(Category.id.in_(category_ids)).all()
-        product.categories = categories
-    
-    # Handle new media uploads
-    media_files = request.files.getlist('media')
-    if media_files and media_files[0].filename:
-        # Count existing media
-        existing_count = ProductMedia.query.filter_by(product_id=product.id).count()
-        
-        for i, file in enumerate(media_files[:4 - existing_count]):
-            if file and file.filename:
-                filename = f"{product.id}_{existing_count + i}_{secure_filename(file.filename)}"
-                url = upload_file(file, filename, folder='products')
-                
-                extension = filename.rsplit('.', 1)[-1].lower()
-                media_type = 'video' if extension in current_app.config.get('ALLOWED_VIDEO_EXTENSIONS', []) else 'image'
-                
-                media = ProductMedia(
-                    product_id=product.id,
-                    url=url,
-                    media_type=media_type,
-                    sort_order=existing_count + i
-                )
-                db.session.add(media)
-    
-    product.updated_at = datetime.utcnow()
+    """Edit own listing. New photos go in images[]; remove photos via DELETE .../images/<id>."""
+    product, error_response = _get_owned_product(product_id)
+    if error_response:
+        return error_response
+
+    error = _apply_fields(product, request.form, creating=False)
+    if error:
+        return jsonify({'message': error}), 400
+
+    images = request.files.getlist('images')
+    if any(f and f.filename for f in images):
+        error = _save_images(product, images)
+        if error:
+            db.session.rollback()
+            return jsonify({'message': error}), 400
+
     db.session.commit()
-    
+    db.session.refresh(product)
+    return jsonify({'message': 'Listing updated', 'product': product.to_dict()}), 200
+
+
+@bp.route('/<int:product_id>/sold', methods=['POST'])
+@jwt_required()
+def set_sold(product_id):
+    """Mark a listing sold or available again. Body: {"is_sold": true|false}"""
+    product, error_response = _get_owned_product(product_id)
+    if error_response:
+        return error_response
+
+    data = request.get_json(silent=True) or {}
+    product.is_sold = bool(data.get('is_sold', True))
+    db.session.commit()
     return jsonify({
-        'message': 'Product updated successfully',
-        'product': product.to_dict()
+        'message': 'Marked as sold' if product.is_sold else 'Marked as available',
+        'product': product.to_dict(),
     }), 200
 
 
 @bp.route('/<int:product_id>', methods=['DELETE'])
 @jwt_required()
 def delete_product(product_id):
-    """Delete a product (owner only)"""
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
-    product = Product.query.get(product_id)
-    
-    if not product:
-        return jsonify({'message': 'Product not found'}), 404
-    
-    # Allow deletion if user is the owner OR is an admin
-    is_owner = product.store.owner_id == user_id
-    is_admin = user and user.role in ['admin', 'super_admin']
-    
-    if not is_owner and not is_admin:
-        return jsonify({'message': 'Unauthorized'}), 403
-    
-    # Soft delete
+    """Owner deletes their listing (kept in DB as inactive so chats still resolve)"""
+    product, error_response = _get_owned_product(product_id)
+    if error_response:
+        return error_response
+
     product.is_active = False
     db.session.commit()
-    
-    return jsonify({'message': 'Product deleted successfully'}), 200
+    return jsonify({'message': 'Listing deleted'}), 200
 
 
-@bp.route('/<int:product_id>/media/<int:media_id>', methods=['DELETE'])
+@bp.route('/<int:product_id>/images/<int:media_id>', methods=['DELETE'])
 @jwt_required()
-def delete_product_media(product_id, media_id):
-    """Delete a product media (owner only)"""
-    user_id = int(get_jwt_identity())
-    product = Product.query.get(product_id)
-    
-    if not product:
-        return jsonify({'message': 'Product not found'}), 404
-    
-    if product.store.owner_id != user_id:
-        return jsonify({'message': 'Unauthorized'}), 403
-    
-    media = ProductMedia.query.get(media_id)
-    if not media or media.product_id != product_id:
-        return jsonify({'message': 'Media not found'}), 404
-    
+def delete_product_image(product_id, media_id):
+    product, error_response = _get_owned_product(product_id)
+    if error_response:
+        return error_response
+
+    media = db.session.get(ProductMedia, media_id)
+    if not media or media.product_id != product.id:
+        return jsonify({'message': 'Photo not found'}), 404
+    if len(product.media) <= 1:
+        return jsonify({'message': 'A listing needs at least one photo'}), 400
+
     db.session.delete(media)
     db.session.commit()
-    
-    return jsonify({'message': 'Media deleted successfully'}), 200
-
-
-# Review endpoints
-@bp.route('/<int:product_id>/reviews', methods=['GET'])
-def get_product_reviews(product_id):
-    """Get reviews for a product"""
-    page = request.args.get('page', 1, type=int)
-    limit = request.args.get('limit', 20, type=int)
-    
-    reviews = Review.query.filter_by(
-        product_id=product_id,
-        is_approved=True,
-        is_hidden=False
-    ).order_by(Review.created_at.desc())
-    
-    pagination = reviews.paginate(page=page, per_page=limit, error_out=False)
-    
-    # Calculate stats
-    all_reviews = Review.query.filter_by(
-        product_id=product_id,
-        is_approved=True,
-        is_hidden=False
-    ).all()
-    
-    total = len(all_reviews)
-    average = sum(r.rating for r in all_reviews) / total if total > 0 else 0
-    distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-    for r in all_reviews:
-        distribution[r.rating] = distribution.get(r.rating, 0) + 1
-    
-    return jsonify({
-        'reviews': [r.to_dict() for r in pagination.items],
-        'stats': {
-            'average': round(average, 1),
-            'total': total,
-            'distribution': distribution
-        },
-        'pagination': {
-            'page': page,
-            'limit': limit,
-            'total': pagination.total,
-            'pages': pagination.pages
-        }
-    }), 200
-
-
-@bp.route('/<int:product_id>/reviews', methods=['POST'])
-@jwt_required()
-def create_review(product_id):
-    """Create a review (verified buyers only)"""
-    user_id = int(get_jwt_identity())
-    data = request.get_json()
-    order_id = data.get('order_id')
-    rating = data.get('rating')
-    comment = data.get('comment', '')
-    media_urls = data.get('media_urls', [])
-    
-    if not product_id or not rating:
-        return jsonify({'message': 'product_id and rating are required'}), 400
-    
-    if rating < 1 or rating > 5:
-        return jsonify({'message': 'Rating must be between 1 and 5'}), 400
-    
-    # Verify user has purchased this product (approved or completed orders)
-    order = Order.query.filter(
-        Order.buyer_id == user_id,
-        Order.product_id == product_id,
-        Order.status.in_([OrderStatus.APPROVED.value, OrderStatus.COMPLETED.value])
-    ).first()
-    
-    if not order:
-        return jsonify({'message': 'You must purchase this product before reviewing'}), 403
-    
-    # Check if already reviewed this order
-    existing = Review.query.filter_by(
-        user_id=user_id,
-        product_id=product_id,
-        order_id=order.id
-    ).first()
-    
-    if existing:
-        return jsonify({'message': 'You have already reviewed this order'}), 400
-    
-    review = Review(
-        product_id=product_id,
-        user_id=user_id,
-        order_id=order.id,
-        rating=rating,
-        comment=comment,
-        media_urls=media_urls if media_urls else None,
-        is_approved=True  # Auto-approve for now
-    )
-    
-    db.session.add(review)
-    
-    # Update product rating
-    product = Product.query.get(product_id)
-    if product:
-        total_rating = (product.rating * product.total_reviews) + rating
-        product.total_reviews += 1
-        product.rating = round(total_rating / product.total_reviews, 1)
-        
-        # Update store rating
-        store = product.store
-        if store:
-            # Recalculate store rating from all products
-            all_products = store.products.all()
-            if all_products:
-                avg_rating = sum(p.rating for p in all_products) / len(all_products)
-                store.rating = round(avg_rating, 1)
-                store.total_reviews += 1
-    
-    db.session.commit()
-    
-    return jsonify({
-        'message': 'Review submitted successfully',
-        'review': review.to_dict()
-    }), 201
-
+    return jsonify({'message': 'Photo removed'}), 200
